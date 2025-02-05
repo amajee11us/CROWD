@@ -20,3 +20,4 @@ INPUT:
   CROP:
     ENABLED: True
   FORMAT: "RGB"
+OUTPUT_DIR: "output/M-OWODB/t1/"
