@@ -388,7 +388,7 @@ def voc_eval(detpath, annopath, imagesetfile, classname, ovthresh=0.5, use_07_me
     for imagename in imagenames:
         R = [obj for obj in recs[imagename] if obj["name"] == classname]
         bbox = np.array([x["bbox"] for x in R])
-        difficult = np.array([x["difficult"] for x in R]).astype(np.bool)
+        difficult = np.array([x["difficult"] for x in R]).astype(bool)
         # difficult = np.array([False for x in R]).astype(np.bool)  # treat all "difficult" as GT
         det = [False] * len(R)
         npos = npos + sum(~difficult)
@@ -488,7 +488,7 @@ def voc_eval(detpath, annopath, imagesetfile, classname, ovthresh=0.5, use_07_me
     for imagename in imagenames:
         R = [obj for obj in recs[imagename] if obj["name"] == 'unknown']
         bbox = np.array([x["bbox"] for x in R])
-        difficult = np.array([x["difficult"] for x in R]).astype(np.bool)
+        difficult = np.array([x["difficult"] for x in R]).astype(bool)
         det = [False] * len(R)
         n_unk = n_unk + sum(~difficult)
         unknown_class_recs[imagename] = {"bbox": bbox, "difficult": difficult, "det": det}
