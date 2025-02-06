@@ -1,6 +1,6 @@
 _BASE_: "base.yaml"
 MODEL:
-  WEIGHTS: "detectron2://ImageNetPretrained/torchvision/R-50.pkl"
+  WEIGHTS: "output/S-OWODB/t4/model_final.pth"
   RESNETS:
     DEPTH: 50
     STRIDE_IN_1X1: False
@@ -11,10 +11,10 @@ DATASETS:
   TRAIN: ("my_train",)
   TEST:  ("my_val",)
 SOLVER:
-  STEPS: (120000, 125000, 127000)
-  MAX_ITER: 130000
+  STEPS: (5000, 10000, 12000)
+  MAX_ITER: 15000
 TEST:
-  EVAL_PERIOD: 130000
+  EVAL_PERIOD: 15000
   PREV_INTRODUCED_CLS: 60
   CUR_INTRODUCED_CLS: 20
   PREV_CLASSES: (19, 21, 20,)
@@ -22,3 +22,4 @@ INPUT:
   CROP:
     ENABLED: True
   FORMAT: "RGB"
+OUTPUT_DIR: "output/S-OWODB/t4_ft/"

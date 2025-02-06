@@ -9,27 +9,27 @@ if [ $BENCHMARK == "M-OWODB" ]; then
 
   CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t2 --config-file configs/${BENCHMARK}/t2.yaml MODEL.WEIGHTS output/${BENCHMARK}/t1/model_0019999.pth
 
-  CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t2_ft --config-file configs/${BENCHMARK}/t2_ft.yaml MODEL.WEIGHTS output/${BENCHMARK}/t2/model_0034999.pth
+  CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t2_ft --config-file configs/${BENCHMARK}/t2_ft.yaml MODEL.WEIGHTS output/${BENCHMARK}/t2/model_0014999.pth
 
-  CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t3 --config-file configs/${BENCHMARK}/t3.yaml MODEL.WEIGHTS output/${BENCHMARK}/t2_ft/model_0049999.pth
+  CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t3 --config-file configs/${BENCHMARK}/t3.yaml MODEL.WEIGHTS output/${BENCHMARK}/t2_ft/model_0014999.pth
 
-  CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t3_ft --config-file configs/${BENCHMARK}/t3_ft.yaml MODEL.WEIGHTS output/${BENCHMARK}/t3/model_0064999.pth
+  CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t3_ft --config-file configs/${BENCHMARK}/t3_ft.yaml MODEL.WEIGHTS output/${BENCHMARK}/t3/model_0014999.pth
 
-  CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t4 --config-file configs/${BENCHMARK}/t4.yaml MODEL.WEIGHTS output/${BENCHMARK}/t3_ft/model_0079999.pth
+  CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t4 --config-file configs/${BENCHMARK}/t4.yaml MODEL.WEIGHTS output/${BENCHMARK}/t3_ft/model_0014999.pth
 
-  CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t4_ft --config-file configs/${BENCHMARK}/t4_ft.yaml MODEL.WEIGHTS output/${BENCHMARK}/t4/model_0094999.pth
+  CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t4_ft --config-file configs/${BENCHMARK}/t4_ft.yaml MODEL.WEIGHTS output/${BENCHMARK}/t4/model_0014999.pth
 else
   CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t1 --config-file configs/${BENCHMARK}/t1.yaml
 
   CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t2 --config-file configs/${BENCHMARK}/t2.yaml MODEL.WEIGHTS output/${BENCHMARK}/t1/model_0039999.pth
 
-  CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t2_ft --config-file configs/${BENCHMARK}/t2_ft.yaml MODEL.WEIGHTS output/${BENCHMARK}/t2/model_0054999.pth
+  CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t2_ft --config-file configs/${BENCHMARK}/t2_ft.yaml MODEL.WEIGHTS output/${BENCHMARK}/t2/model_0014999.pth
 
-  CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t3 --config-file configs/${BENCHMARK}/t3.yaml MODEL.WEIGHTS output/${BENCHMARK}/t2_ft/model_0069999.pth
+  CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t3 --config-file configs/${BENCHMARK}/t3.yaml MODEL.WEIGHTS output/${BENCHMARK}/t2_ft/model_0014999.pth
 
-  CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t3_ft --config-file configs/${BENCHMARK}/t3_ft.yaml MODEL.WEIGHTS output/${BENCHMARK}/t3/model_0084999.pth
+  CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t3_ft --config-file configs/${BENCHMARK}/t3_ft.yaml MODEL.WEIGHTS output/${BENCHMARK}/t3/model_0014999.pth
 
-  CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t4 --config-file configs/${BENCHMARK}/t4.yaml MODEL.WEIGHTS output/${BENCHMARK}/t3_ft/model_0099999.pth
+  CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t4 --config-file configs/${BENCHMARK}/t4.yaml MODEL.WEIGHTS output/${BENCHMARK}/t3_ft/model_0014999.pth
 
-  CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t4_ft --config-file configs/${BENCHMARK}/t4_ft.yaml MODEL.WEIGHTS output/${BENCHMARK}/t4/model_00114999.pth
+  CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py --num-gpus 4 --dist-url tcp://127.0.0.1:${PORT} --task ${BENCHMARK}/t4_ft --config-file configs/${BENCHMARK}/t4_ft.yaml MODEL.WEIGHTS output/${BENCHMARK}/t4/model_0014999.pth
 fi
