@@ -23,7 +23,6 @@ class SubmodularSelection:
         self.similarity_fn = similarity_fn
         self.lam = lamda
         self.nu = nu
-        self.device = ground_set_features.device
         self.n = N
                
         # Selected indices (subset A)
