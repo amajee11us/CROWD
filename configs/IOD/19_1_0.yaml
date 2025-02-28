@@ -20,4 +20,4 @@ INPUT:
   CROP:
     ENABLED: True
   FORMAT: "RGB"
-OUTPUT_DIR: "output/IOD_19_1/"
+OUTPUT_DIR: "output/IOD_19_1/00/"
