@@ -72,7 +72,7 @@ class RandBox(nn.Module):
         self.size_divisibility = self.backbone.size_divisibility
         
         # Selection Config - Currently run offline
-        self.selection = False # TODO: Update with a config
+        self.selection = cfg.DISCOVER_UNKNOWN
 
         # build diffusion
         timesteps = 1000
@@ -259,6 +259,53 @@ class RandBox(nn.Module):
 
         return sqrt_alphas_cumprod_t * x_start + sqrt_one_minus_alphas_cumprod_t * noise
 
+    def mine_unknown_rois(self, batched_inputs, backbone_feats, images_whwh, images):
+        gt_instances = [x["instances"].to(self.device) for x in batched_inputs]
+        targets, x_boxes, noises, t = self.prepare_targets(gt_instances)
+        t = t.squeeze(-1)
+        x_boxes = x_boxes * images_whwh[:, None, :]
+        
+        outputs_class, output_objectness, outputs_coord, proposal_features = self.head(backbone_feats, 
+                                                                                       x_boxes, 
+                                                                                       t, 
+                                                                                       None, 
+                                                                                       roi_labels=None)
+        raw_rois = {
+            'pred_logits': outputs_class[-1], 
+            'pred_objectness': output_objectness[-1], 
+            'pred_boxes': outputs_coord[-1],
+            'pred_proposal_features': proposal_features[-1]
+        }
+        
+        # Map each RoI to its corresponding class label using the Dynamic Matcher
+        # Note: We only look for the knowns here, remaining RoIs are marked as unknown
+        gt_indices, _, _, _ = self.criterion.matcher(raw_rois, targets)   
+        
+        raw_rois_list = []
+        gt_indices_list = []        
+        raw_scores_list = []
+        raw_bbox_list = []
+        for batch_idx in range(len(targets)):
+            gt_indices_list.append(gt_indices[batch_idx][0].float()) 
+            raw_rois_list.append(raw_rois["pred_proposal_features"][batch_idx])
+            raw_scores_list.append(raw_rois["pred_objectness"][batch_idx])
+            raw_bbox_list.append(raw_rois["pred_boxes"][batch_idx])
+        
+        # flatten the feature vector across images in the batch
+        raw_rois = torch.cat(raw_rois_list, dim = 0)
+        known_mask = torch.cat(gt_indices_list, dim = 0)
+        raw_objectness = torch.cat(raw_scores_list, dim = 0)
+        raw_bboxes = torch.cat(raw_bbox_list, dim = 0)
+        
+        # TODO : Add the selection algorithm here
+        
+        return {
+            'bboxes': raw_bboxes,
+            'labels': known_mask,
+            'scores': raw_objectness
+        }
+        
+    
     def forward(self, batched_inputs, do_postprocess=True):
         """
         Args:
