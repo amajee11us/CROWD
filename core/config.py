@@ -50,6 +50,13 @@ def add_config(cfg):
     cfg.MODEL.DISENTANGLED = 2  # 0: RandBox, 1: separate head, 2: feature orthogonality
     cfg.MODEL.DECORR_WEIGHT = 1.  # weight for prediction decorrelation loss
 
+    # Combinatorial CROWD loss
+    cfg.MODEL.CROWD = True
+    cfg.MODEL.CROWD_WEIGHT = 0.0  # weight for CROWD loss (uses submod CG)
+    cfg.MODEL.CROWD_FUNCTION = "GCCG" # submodular function used as CROWD loss
+    cfg.MODEL.CROWD_DIVERSITY = 0.5
+    cfg.MODEL.CROWD_PRIVATE_HARDNESS = 1.0
+
     # Optimizer.
     cfg.SOLVER.OPTIMIZER = "ADAMW"
     cfg.SOLVER.BACKBONE_MULTIPLIER = 1.0

@@ -99,6 +99,7 @@ class DynamicHead(nn.Module):
         inter_class_logits = []
         inter_objectness = []
         inter_pred_bboxes = []
+        inter_proposal_features = []
 
         bs = len(features[0])
         bboxes = init_bboxes
@@ -113,23 +114,22 @@ class DynamicHead(nn.Module):
         for head_idx, rcnn_head in enumerate(self.head_series):
             class_logits, objectness, pred_bboxes, proposal_features = rcnn_head(features, bboxes, proposal_features,
                                                                            self.box_pooler)
+            per_image_features   = torch.split(proposal_features, class_logits.shape[1], dim=1)
+            proposal_features    = torch.cat(per_image_features, dim=0)
             if self.return_intermediate:
                 inter_class_logits.append(class_logits)
                 inter_objectness.append(objectness)
                 inter_pred_bboxes.append(pred_bboxes)
+                inter_proposal_features.append(proposal_features)
             bboxes = pred_bboxes.detach()
-
-        num_images, num_rois = roi_labels.shape
-        per_image_features   = torch.split(proposal_features, num_rois, dim=1)
-        proposal_features    = torch.cat(per_image_features, dim=0)
 
         if self.return_intermediate:
             return (torch.stack(inter_class_logits),
                     torch.stack(inter_objectness),
                     torch.stack(inter_pred_bboxes),
-                    proposal_features)
+                    torch.stack(inter_proposal_features))
 
-        return class_logits[None], objectness[None], pred_bboxes[None], proposal_features
+        return class_logits[None], objectness[None], pred_bboxes[None], proposal_features[None]
 
 
 class RCNNHead(nn.Module):

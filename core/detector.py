@@ -70,6 +70,9 @@ class RandBox(nn.Module):
         # Build Backbone.
         self.backbone = build_backbone(cfg)
         self.size_divisibility = self.backbone.size_divisibility
+        
+        # Selection Config - Currently run offline
+        self.selection = False # TODO: Update with a config
 
         # build diffusion
         timesteps = 1000
@@ -134,6 +137,7 @@ class RandBox(nn.Module):
         nc_weight = cfg.MODEL.NC_WEIGHT
         no_object_weight = cfg.MODEL.NO_OBJECT_WEIGHT
         decorr_weight = cfg.MODEL.DECORR_WEIGHT
+        crowd_weight = cfg.MODEL.CROWD_WEIGHT
         self.deep_supervision = cfg.MODEL.DEEP_SUPERVISION
         self.use_nms = cfg.MODEL.USE_NMS
 
@@ -142,7 +146,7 @@ class RandBox(nn.Module):
             cfg=cfg, cost_class=class_weight, cost_bbox=l1_weight, cost_giou=giou_weight
         )
         weight_dict = {"loss_ce": class_weight, "loss_bbox": l1_weight, "loss_giou": giou_weight,
-                       "loss_nc_ce": nc_weight, "loss_decorr": decorr_weight}
+                       "loss_nc_ce": nc_weight, "loss_decorr": decorr_weight, "loss_crowd": crowd_weight}
         if self.deep_supervision:
             aux_weight_dict = {}
             for i in range(self.num_heads - 1):
@@ -152,6 +156,8 @@ class RandBox(nn.Module):
         losses = ["labels", "boxes"]
         if cfg.MODEL.NC:
             losses += ["nc_labels"]
+        if cfg.MODEL.CROWD:
+            losses += ["crowd"]
         if decorr_weight > 0:
             losses += ["decorr"]
 
@@ -280,41 +286,35 @@ class RandBox(nn.Module):
             features.append(feature)
 
         # Prepare Proposals.
-        if not self.training:
+        if not self.training and not self.selection:
             results = self.ddim_sample(batched_inputs, features, images_whwh, images, do_postprocess=do_postprocess)
+            return results
+        
+        if not self.training and self.selection:
+            results = self.mine_unknown_rois(batched_inputs, features, images_whwh, images)
             return results
 
         if self.training:
             gt_instances = [x["instances"].to(self.device) for x in batched_inputs]
-            targets, x_boxes, noises, t, roi_labels = self.prepare_targets(gt_instances)
+            targets, x_boxes, noises, t = self.prepare_targets(gt_instances)
             t = t.squeeze(-1)
             x_boxes = x_boxes * images_whwh[:, None, :]
 
             pre_filter_outputs_class, pre_filter_output_objectness, pre_filter_outputs_coord, pre_filter_proposal_features = self.head(
-                                                                                     features, x_boxes, t, None, roi_labels=roi_labels)
-            
-            print(roi_labels.shape[0])
-            filtered_results = [
-                    filter_submod_selection(
-                        roi_labels[i], 
-                        pre_filter_outputs_coord[-1][i], 
-                        pre_filter_proposal_features[i], 
-                        pre_filter_outputs_class[-1][i], 
-                        pre_filter_output_objectness[-1][i],
-                        self.num_proposals
-                    )
-                    for i in range(roi_labels.shape[0])
-                ]
-            # Unzip the results (each is a tuple of tensors).
-            outputs_coord, outputs_class, output_objectness = map(
-                lambda *x: torch.stack(x, dim=0), *filtered_results
-            )
-            
-            # print(outputs_coord.shape, output_objectness.shape, outputs_class.shape)            
-            output = {'pred_logits': outputs_class, 'pred_objectness': output_objectness, 'pred_boxes': outputs_coord}
+                                                                                     features, x_boxes, t, None, roi_labels=None)
+                      
+            output = {
+                'pred_logits': pre_filter_outputs_class[-1], 
+                'pred_objectness': pre_filter_output_objectness[-1], 
+                'pred_boxes': pre_filter_outputs_coord[-1],
+                'pred_proposal_features': pre_filter_proposal_features[-1]
+            }
             if self.deep_supervision:
-                output['aux_outputs'] = [{'pred_logits': a, 'pred_objectness': b, 'pred_boxes': c}
-                                         for a, b, c in zip(pre_filter_outputs_class[:-1], pre_filter_output_objectness[:-1], pre_filter_outputs_coord[:-1])]
+                output['aux_outputs'] = [{'pred_logits': a, 'pred_objectness': b, 'pred_boxes': c, 'pred_proposal_features': d}
+                                         for a, b, c, d in zip(pre_filter_outputs_class[:-1], 
+                                                               pre_filter_output_objectness[:-1], 
+                                                               pre_filter_outputs_coord[:-1], 
+                                                               pre_filter_proposal_features[:-1])]
             # print(output['pred_logits'].shape)
             
             # exit()
@@ -327,33 +327,27 @@ class RandBox(nn.Module):
 
     def prepare_diffusion_concat(self, gt_boxes):
         """
-        Given ground-truth boxes (normalized as (cx, cy, w, h)), this function prepares
-        an initial set of proposals for the diffusion process.
-        
-        Here we generate twice as many proposals as the final target number.
+        :param gt_boxes: (cx, cy, w, h), normalized
+        :param num_proposals:
         """
-        # Use double the number of proposals initially.
-        initial_num = self.num_proposals * 2
-
         t = torch.randint(0, self.num_timesteps, (1,), device=self.device).long()
-        noise = torch.randn(initial_num, 4, device=self.device)
+        noise = torch.randn(self.num_proposals, 4, device=self.device)
 
         num_gt = gt_boxes.shape[0]
-        if not num_gt:  # if no gt boxes, generate a dummy gt box
+        if not num_gt:  # generate fake gt boxes if empty gt boxes
             gt_boxes = torch.as_tensor([[0.5, 0.5, 1., 1.]], dtype=torch.float, device=self.device)
             num_gt = 1
 
-        # Generate placeholders for the unknown proposals (this is computed but may be unused
-        # if you later merge with gt; we keep it here for consistency).
-        box_placeholder = torch.randn(initial_num - num_gt, 4, device=self.device) / 6.0 + 0.5
+        box_placeholder = torch.randn(self.num_proposals - num_gt, 4,
+                                      device=self.device) / 6. + 0.5  # 3sigma = 1/2 --> sigma: 1/6
         box_placeholder[:, 2:] = torch.clip(box_placeholder[:, 2:], min=1e-4)
-        
-        # Generate the initial proposals (randomly) with size initial_num.
-        x_start = torch.randn(initial_num, 4, device=self.device)
+        x_start = torch.randn(self.num_proposals, 4, device=self.device)
+
         x_start = (x_start * 2. - 1.) * self.scale
 
-        # Apply the diffusion forward process.
+        # noise sample
         x = self.q_sample(x_start=x_start, t=t, noise=noise)
+
         x = torch.clamp(x, min=-1 * self.scale, max=self.scale)
         x = ((x / self.scale) + 1) / 2.
 
@@ -366,8 +360,6 @@ class RandBox(nn.Module):
         diffused_boxes = []
         noises = []
         ts = []
-        roi_labels_list = []  # To store per-image ROI labels.
-
         for targets_per_image in targets:
             target = {}
             h, w = targets_per_image.image_size
@@ -375,13 +367,10 @@ class RandBox(nn.Module):
             gt_classes = targets_per_image.gt_classes
             gt_boxes = targets_per_image.gt_boxes.tensor / image_size_xyxy
             gt_boxes = box_xyxy_to_cxcywh(gt_boxes)
-            
-            # Generate diffused proposals using the doubled initial number.
             d_boxes, d_noise, d_t = self.prepare_diffusion_concat(gt_boxes)
             diffused_boxes.append(d_boxes)
             noises.append(d_noise)
             ts.append(d_t)
-            
             target["labels"] = gt_classes.to(self.device)
             target["boxes"] = gt_boxes.to(self.device)
             target["boxes_xyxy"] = targets_per_image.gt_boxes.tensor.to(self.device)
@@ -391,21 +380,7 @@ class RandBox(nn.Module):
             target["area"] = targets_per_image.gt_boxes.area().to(self.device)
             new_targets.append(target)
 
-            # ---- Create the ROI labels for this image ----
-            # We now create a tensor of length `initial_num` (i.e. double self.num_proposals).
-            num_gt = gt_classes.shape[0]
-            initial_num = self.num_proposals * 2
-            roi_labels_img = torch.full((initial_num,), -1, dtype=gt_classes.dtype, device=self.device)
-            # For the first num_gt proposals, assign the ground-truth class labels.
-            if num_gt > 0:
-                roi_labels_img[:num_gt] = gt_classes
-            roi_labels_list.append(roi_labels_img)
-        
-        # Stack all per-image roi_labels into a single tensor of shape (batch_size, initial_num).
-        roi_labels = torch.stack(roi_labels_list, dim=0)
-
-        return new_targets, torch.stack(diffused_boxes), torch.stack(noises), torch.stack(ts), roi_labels
-
+        return new_targets, torch.stack(diffused_boxes), torch.stack(noises), torch.stack(ts)
 
     def inference(self, box_cls, box_objectness, box_pred, image_sizes):
         """
@@ -429,8 +404,6 @@ class RandBox(nn.Module):
             multiple_sample = 1
         else:
             multiple_sample = self.multiple_sample
-            
-        # scores - represent the loss values
 
         if self.disentangled == 0:
             scores = torch.sigmoid(box_cls)
