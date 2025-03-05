@@ -34,7 +34,55 @@ class VisualizationDemo(object):
             self.predictor = DefaultPredictor(cfg)
 
         self.threshold = cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST  # workaround
+        self.check_for_miner_call = cfg.DISCOVER_UNKNOWN
+    
+    def mine_unknown_per_image(self, image, gt_instances=None):
+        """
+        Args:
+            image (np.ndarray): an image of shape (H, W, C) (in BGR order).
+                This is the format used by OpenCV.
+            gt_instances (detectron2.structures.Instances, optional): ground truth instances.
+            
+        Returns:
+            predictions (dict): the output of the model.
+        """
+        if not self.check_for_miner_call:
+            raise ValueError("The DISCOVER_UNKNOWN flag in the config should be set to True to mine unknowns.")
+        
+        vis_output = None
+        # If ground truth instances are provided, build batched input accordingly.
+        if gt_instances is not None:
+            # Mimic the preprocessing from DefaultPredictor.__call__
+            # If the predictor expects RGB, convert the image accordingly.
+            if self.predictor.input_format == "RGB":
+                processed_image = image[:, :, ::-1]
+            else:
+                processed_image = image
 
+            height, width = image.shape[:2]
+            # # Apply the same transformation as the predictor.
+            image_tensor = torch.as_tensor(image.astype("float32").transpose(2, 0, 1))
+            # Build input dict with ground truth instances.
+            inputs = {
+                "image": image_tensor,
+                "height": height,
+                "width": width,
+                "instances": gt_instances
+            }
+            batched_inputs = [inputs]
+            with torch.no_grad():
+                mined_instances = self.predictor.model(batched_inputs)
+        else:
+            mined_instances = self.predictor(image)
+        
+        # Move everything to source device now
+        # return {'bboxes': raw_bboxes, 'labels': gt_indices, 'scores': raw_objectness }
+        mined_instances["bboxes"] = mined_instances["bboxes"].to(self.cpu_device).tolist()
+        mined_instances["labels"] = mined_instances["labels"].int().to(self.cpu_device).tolist()
+        mined_instances["scores"] = mined_instances["scores"].to(self.cpu_device).tolist()
+        
+        return mined_instances
+    
     def run_on_image(self, image, unknown=False):
         """
         Args:
