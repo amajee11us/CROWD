@@ -259,6 +259,7 @@ class RandBox(nn.Module):
 
         return sqrt_alphas_cumprod_t * x_start + sqrt_one_minus_alphas_cumprod_t * noise
 
+    @torch.no_grad()
     def mine_unknown_rois(self, batched_inputs, backbone_feats, images_whwh, images):
         gt_instances = [x["instances"].to(self.device) for x in batched_inputs]
         targets, x_boxes, noises, t = self.prepare_targets(gt_instances)
@@ -297,12 +298,46 @@ class RandBox(nn.Module):
         raw_objectness = torch.cat(raw_scores_list, dim = 0)
         raw_bboxes = torch.cat(raw_bbox_list, dim = 0)
         
-        # TODO : Add the selection algorithm here
+        # Remove low score RoIs - Not important and mostly would contain BG objects
+        low_score_mask = (raw_objectness.squeeze(1) > 0.2)
+        low_score_filtered_idx = torch.nonzero(low_score_mask, as_tuple=False).squeeze(1)
+        
+        # Apply the low score filter
+        raw_rois = raw_rois[low_score_filtered_idx]
+        known_mask = known_mask[low_score_filtered_idx]
+        raw_objectness = raw_objectness[low_score_filtered_idx]
+        raw_bboxes = raw_bboxes[low_score_filtered_idx]
+               
+        unk_idx, outputs_coord, output_objectness = filter_submod_selection(
+                                                                    known_mask, 
+                                                                    raw_bboxes, 
+                                                                    raw_rois, 
+                                                                    outputs_class, 
+                                                                    raw_objectness,
+                                                                    10
+                                                                )
+        
+        # Remove RoIs with objectness < 0.4 - We need only important RoIs
+        final_filter_mask = output_objectness.squeeze(-1) >= 0.4
+        filtered_idx = torch.nonzero(final_filter_mask, as_tuple=False).squeeze(1)
+
+        # If no RoIs pass the filter, return empty tensors
+        if filtered_idx.numel() == 0:
+            return {
+                'bboxes': torch.empty((0, 4), device=self.device),
+                'labels': torch.empty((0,), device=self.device, dtype=torch.long),
+                'scores': torch.empty((0,), device=self.device)
+            }
+
+        # Apply the final filter
+        outputs_coord = outputs_coord[filtered_idx]
+        output_objectness = output_objectness[filtered_idx]
+        unk_idx = unk_idx[filtered_idx]
         
         return {
-            'bboxes': raw_bboxes,
-            'labels': known_mask,
-            'scores': raw_objectness
+            'bboxes': outputs_coord,
+            'labels': torch.ones_like(unk_idx) * 80, 
+            'scores': output_objectness.squeeze(-1)
         }
         
     
@@ -362,9 +397,7 @@ class RandBox(nn.Module):
                                                                pre_filter_output_objectness[:-1], 
                                                                pre_filter_outputs_coord[:-1], 
                                                                pre_filter_proposal_features[:-1])]
-            # print(output['pred_logits'].shape)
             
-            # exit()
             loss_dict = self.criterion(output, targets)
             weight_dict = self.criterion.weight_dict
             for k in loss_dict.keys():

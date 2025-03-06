@@ -5,6 +5,7 @@ from typing import List, Tuple, Union
 from fvcore.common.file_io import PathManager
 import itertools
 import logging
+import json
 
 from detectron2.data import DatasetCatalog, MetadataCatalog
 from detectron2.structures import BoxMode
@@ -98,7 +99,6 @@ def load_voc_instances(dirname: str, split: str, class_names: Union[List[str], T
     """
     with PathManager.open(os.path.join(dirname, "ImageSets", "Main", split + ".txt")) as f:
         fileids = np.loadtxt(f, dtype=str)
-
     # Needs to read many small annotation files. Makes sense at local
     annotation_dirname = PathManager.get_local_path(os.path.join(dirname, "Annotations/"))
     dicts = []
@@ -117,6 +117,17 @@ def load_voc_instances(dirname: str, split: str, class_names: Union[List[str], T
         allowed_class = list(range(0, cfg.TEST.PREV_INTRODUCED_CLS+cfg.TEST.CUR_INTRODUCED_CLS))
     else:
         allowed_class = list(range(cfg.TEST.PREV_INTRODUCED_CLS, cfg.TEST.PREV_INTRODUCED_CLS+cfg.TEST.CUR_INTRODUCED_CLS))
+        
+    # Now lets load the additional unknown class annotations if exists
+    if os.path.exists(cfg.DISCOVER_STORE_PATH) and ("test" not in split):
+        print('Found Additional unknown annotations for split {}. Loading from: {}'.format(split, cfg.DISCOVER_STORE_PATH))
+        # load the json and store the keys separately
+        with open(cfg.DISCOVER_STORE_PATH, 'r') as file:
+            unknown_annotations = json.load(file)
+        unknown_file_ids = unknown_annotations.keys() # this is a list   
+    else:
+        unknown_file_ids = [] # empty             
+    
     for id in ids:
         fileid = id2fileids[id]
     # for fileid in id2fileids.values():
@@ -162,6 +173,16 @@ def load_voc_instances(dirname: str, split: str, class_names: Union[List[str], T
             instances.append(
                 {"category_id": class_names.index(cls), "bbox": bbox, "bbox_mode": BoxMode.XYXY_ABS}
             )
+        
+        # check if this file_id has additional unknown annotations
+        if fileid in unknown_file_ids:
+            additional_annot = unknown_annotations[fileid]
+            for obj_idx in range(len(additional_annot["labels"])):
+                bbox = additional_annot['bboxes'][obj_idx]
+                instances.append(
+                    {"category_id": class_names.index("unknown"), "bbox": bbox, "bbox_mode": BoxMode.XYXY_ABS}
+                )
+        
         r["annotations"] = instances
         dicts.append(r)
     return dicts
