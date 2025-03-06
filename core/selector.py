@@ -99,8 +99,8 @@ def filter_submod_selection(labels_img, boxes_img, feats_img, cls_img, obj_img, 
         filt_labels:(num_proposals,)
     """
     # Get indices for known and unknown proposals.
-    known_mask = (labels_img != -1)
-    unknown_mask = (labels_img == -1)
+    known_mask = (labels_img != 0)
+    unknown_mask = (labels_img == 0)
     known_idx = torch.nonzero(known_mask, as_tuple=False).squeeze(1).cpu()
     unknown_idx = torch.nonzero(unknown_mask, as_tuple=False).squeeze(1).cpu()
 
@@ -131,40 +131,42 @@ def filter_submod_selection(labels_img, boxes_img, feats_img, cls_img, obj_img, 
                                                  lamda = 0.5, 
                                                  nu = 2.5)
 
-        uk_budget = int(num_proposals - known_feats.shape[0])
+        uk_budget = num_proposals #int(num_proposals - known_feats.shape[0])
 
         uk_selected = obj_cg_unknown.maximize(uk_budget)
-        unknown_idx = torch.tensor([s[0] for s in uk_selected])
-        
-    # Combine indices.
-    combined_idx = torch.cat([known_idx, unknown_idx], dim=0)
-    num_known = known_idx.numel()
-    allowed_unknown = max(num_proposals - num_known, 0)
+        unknown_box_idx = torch.tensor([s[0] for s in uk_selected])
     
-    # If too many unknown proposals, randomly sample.
-    if unknown_idx.numel() > allowed_unknown:
-        print("Too many unknowns")
-        perm = torch.randperm(unknown_idx.numel(), device=unknown_idx.device)
-        unknown_idx = unknown_idx[perm[:allowed_unknown]]
-        combined_idx = torch.cat([known_idx, unknown_idx], dim=0)
+    return unknown_box_idx, boxes_img[unknown_box_idx], obj_img[unknown_box_idx]
     
-    # If still too few proposals, pad by repeating a candidate valid proposal.
-    if combined_idx.numel() < num_proposals:
-        print("Too few proposals")
-        pad_count = num_proposals - combined_idx.numel()
-        # Use the first valid index if exists; otherwise, use index 0.
-        candidate = combined_idx[0].unsqueeze(0) if combined_idx.numel() > 0 else torch.tensor([0], device=boxes_img.device)
-        pad_indices = candidate.repeat(pad_count)
-        combined_idx = torch.cat([combined_idx, pad_indices], dim=0)
-    # If too many (should rarely happen), randomly sample exactly num_proposals.
-    elif combined_idx.numel() > num_proposals:
-        print("Too many proposals")
-        perm = torch.randperm(combined_idx.numel(), device=combined_idx.device)
-        combined_idx = combined_idx[perm[:num_proposals]]
+    # # Combine indices.
+    # combined_idx = torch.cat([known_idx, unknown_idx], dim=0)
+    # num_known = known_idx.numel()
+    # allowed_unknown = max(num_proposals - num_known, 0)
     
-    # Now index all outputs.
-    filt_boxes = boxes_img[combined_idx]
-    filt_cls   = cls_img[combined_idx]
-    filt_obj   = obj_img[combined_idx]
+    # # If too many unknown proposals, randomly sample.
+    # if unknown_idx.numel() > allowed_unknown:
+    #     print("Too many unknowns")
+    #     perm = torch.randperm(unknown_idx.numel(), device=unknown_idx.device)
+    #     unknown_idx = unknown_idx[perm[:allowed_unknown]]
+    #     combined_idx = torch.cat([known_idx, unknown_idx], dim=0)
     
-    return filt_boxes, filt_cls, filt_obj
+    # # If still too few proposals, pad by repeating a candidate valid proposal.
+    # if combined_idx.numel() < num_proposals:
+    #     print("Too few proposals")
+    #     pad_count = num_proposals - combined_idx.numel()
+    #     # Use the first valid index if exists; otherwise, use index 0.
+    #     candidate = combined_idx[0].unsqueeze(0) if combined_idx.numel() > 0 else torch.tensor([0], device=boxes_img.device)
+    #     pad_indices = candidate.repeat(pad_count)
+    #     combined_idx = torch.cat([combined_idx, pad_indices], dim=0)
+    # # If too many (should rarely happen), randomly sample exactly num_proposals.
+    # elif combined_idx.numel() > num_proposals:
+    #     print("Too many proposals")
+    #     perm = torch.randperm(combined_idx.numel(), device=combined_idx.device)
+    #     combined_idx = combined_idx[perm[:num_proposals]]
+    
+    # # Now index all outputs.
+    # filt_boxes = boxes_img[combined_idx]
+    # filt_cls   = cls_img[combined_idx]
+    # filt_obj   = obj_img[combined_idx]
+    
+    # return filt_boxes, filt_cls, filt_obj

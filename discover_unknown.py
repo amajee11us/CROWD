@@ -97,7 +97,7 @@ if __name__ == "__main__":
     else:
         image_ids = args.input
 
-    results = []
+    results = {}
     for image_id in tqdm.tqdm(image_ids):
         # Build the image path assuming images are stored under 'datasets/JPEGImages'
         path = osp.join('datasets/JPEGImages', image_id + '.jpg')
@@ -125,10 +125,8 @@ if __name__ == "__main__":
         # Pass both image and ground truth to the predictor.        
         predictions = miner.mine_unknown_per_image(img, gt_instances=gt_instances)
         
-        predictions["image_id"] = image_id
-
         if len(predictions["labels"]) > 0 :
-            results.append(predictions) 
+            results[image_id] = predictions 
 
     # Convert results to JSON and print to console
     json_output = json.dumps(results, indent=4)

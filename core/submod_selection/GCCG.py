@@ -34,7 +34,7 @@ class GraphCutConditionalGain(SubmodularSelection):
             lam (float): λ parameter.
             nu (float): ν parameter.
         """
-        super().__init__(self, ground_set_features.size(0), similarity_fn, lamda=lamda, nu=nu)
+        super().__init__(ground_set_features.size(0), similarity_fn, lamda=lamda, nu=nu)
         
         self.ground_set_features = ground_set_features  # (N, d)
         self.conditioning_features = conditioning_features  # (|P|, d)
