@@ -8,6 +8,8 @@ from .util.box_ops import box_cxcywh_to_xyxy, box_xyxy_to_cxcywh, generalized_bo
 import copy
 import numpy as np
 
+from .submod_loss.GCCG import GraphCutConditionalGainLoss
+from .submod_loss.FLCG import FacilityLocationConditionalGainLoss
 
 class SetCriterionDynamicK(nn.Module):
     """ This class computes the training loss.
@@ -38,6 +40,23 @@ class SetCriterionDynamicK(nn.Module):
         self.focal_loss_alpha = cfg.MODEL.ALPHA
         self.focal_loss_gamma = cfg.MODEL.GAMMA
         self.disentangled = cfg.MODEL.DISENTANGLED
+
+        # Initialize the Submod losses 
+        self.crowd_loss_function = cfg.MODEL.CROWD_FUNCTION
+        if "GCCG" in self.crowd_loss_function:
+            self.crowd_criterion = GraphCutConditionalGainLoss(
+                metric='cosine', 
+                lamda = cfg.MODEL.CROWD_DIVERSITY, 
+                eta   = cfg.MODEL.CROWD_PRIVATE_HARDNESS,
+            )
+        elif "FLCG" in self.crowd_loss_function:
+            self.crowd_criterion = FacilityLocationConditionalGainLoss(
+                metric='cosine', 
+                lamda = cfg.MODEL.CROWD_DIVERSITY, 
+                eta   = cfg.MODEL.CROWD_PRIVATE_HARDNESS,
+            )
+        else:
+            raise NotImplementedError("{} Loss Not Implemented.".format(self.crowd_loss_function))
 
     def loss_labels(self, outputs, targets, indices):
         """Classification loss (NLL)
@@ -197,6 +216,39 @@ class SetCriterionDynamicK(nn.Module):
         loss_decorr = (cov ** 2 / var).mean()
 
         return {'loss_decorr': loss_decorr}
+    
+    def loss_crowd(self, outputs, targets, indices, unknown_targets, unknown_indices):
+        src_features_list = []
+        known_classes_list = []
+        unknown_classes_list = []
+
+        batch_size = len(targets)
+        # Ensure that no other image's features interfere during distributed runs
+        assert len(targets) == len(unknown_targets)        
+
+        for batch_idx in range(batch_size):
+            known_mask = indices[batch_idx][0].float()
+            unknown_mask = unknown_indices[batch_idx][0].float()
+
+            # This was there in OrtogonalDet so I am keeping it !!
+            # gt_multi_idx = indices[batch_idx][1]
+            # if len(gt_multi_idx) == 0:
+            #     continue
+            
+            # Stack the masks for passing to loss function
+            known_classes_list.append(known_mask)
+            unknown_classes_list.append(unknown_mask)  
+            src_features_list.append(outputs["pred_proposal_features"][batch_idx])          
+
+        # flatten the feature vector across images in the batch
+        ground_features = torch.cat(src_features_list, dim = 0)
+        known_mask = torch.cat(known_classes_list, dim = 0)
+        unknown_mask = torch.cat(unknown_classes_list, dim = 0)
+        
+        # Now compute the loss
+        loss_crowd = self.crowd_criterion(ground_features, known_mask, unknown_mask)
+        
+        return {'loss_crowd': loss_crowd}
 
     def _get_src_permutation_idx(self, indices):
         # permute predictions following indices
@@ -210,15 +262,19 @@ class SetCriterionDynamicK(nn.Module):
         tgt_idx = torch.cat([tgt for (_, tgt) in indices])
         return batch_idx, tgt_idx
 
-    def get_loss(self, loss, outputs, targets, indices):
+    def get_loss(self, loss, outputs, targets, indices, unknown_targets=None, unknown_indices=None):
         loss_map = {
             'labels': self.loss_labels,
             'boxes': self.loss_boxes,
             'nc_labels': self.loss_nc_labels,
             'decorr': self.loss_decorr,
+            'crowd': self.loss_crowd,
         }
         assert loss in loss_map, f'do you really want to compute {loss} loss?'
-        return loss_map[loss](outputs, targets, indices)
+        if 'crowd' in loss:
+            return loss_map[loss](outputs, targets, indices, unknown_targets, unknown_indices)
+        else:    
+            return loss_map[loss](outputs, targets, indices)
 
     def forward(self, outputs, targets):
         """ This performs the loss computation.
@@ -239,6 +295,9 @@ class SetCriterionDynamicK(nn.Module):
             if loss == 'nc_labels':
                 if self.start_count > self.start_iter:
                     losses.update(self.get_loss(loss, outputs, unknown_targets, ow_indices))
+            elif loss == 'crowd':
+                if self.start_count > self.start_iter:
+                    losses.update(self.get_loss(loss, outputs, targets, indices, unknown_targets, ow_indices))
             else:
                 losses.update(self.get_loss(loss, outputs, targets, indices))
 
@@ -250,6 +309,11 @@ class SetCriterionDynamicK(nn.Module):
                     if loss == 'nc_labels':
                         if self.start_count > self.start_iter:
                             l_dict = self.get_loss(loss, aux_outputs, unknown_targets, ow_indices)
+                            l_dict = {k + f'_{i}': v for k, v in l_dict.items()}
+                            losses.update(l_dict)
+                    if loss == 'crowd':
+                        if self.start_count > self.start_iter:
+                            l_dict = self.get_loss(loss, aux_outputs, targets, indices, unknown_targets, ow_indices)
                             l_dict = {k + f'_{i}': v for k, v in l_dict.items()}
                             losses.update(l_dict)
                     else:

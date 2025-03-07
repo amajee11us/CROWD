@@ -16,6 +16,7 @@ from .loss import SetCriterionDynamicK, HungarianMatcherDynamicK
 from .head import DynamicHead
 from .util.box_ops import box_cxcywh_to_xyxy, box_xyxy_to_cxcywh
 from .util.misc import nested_tensor_from_tensor_list
+from .selector import filter_similarity, filter_submod_selection
 
 __all__ = ["RandBox"]
 
@@ -60,15 +61,18 @@ class RandBox(nn.Module):
         self.device = torch.device(cfg.MODEL.DEVICE)
 
         self.in_features = cfg.MODEL.ROI_HEADS.IN_FEATURES
-        self.num_classes = cfg.MODEL.NUM_CLASSES
-        self.num_proposals = cfg.MODEL.NUM_PROPOSALS
+        self.num_classes = cfg.MODEL.NUM_CLASSES     # 80 classes + 1 unknown + 1 bg
+        self.num_proposals = cfg.MODEL.NUM_PROPOSALS # This is 500 in OrthogonalDet
         self.hidden_dim = cfg.MODEL.HIDDEN_DIM
         self.num_heads = cfg.MODEL.NUM_HEADS
         self.sampling_method = cfg.MODEL.SAMPLING_METHOD
-        self.disentangled = cfg.MODEL.DISENTANGLED
+        self.disentangled = cfg.MODEL.DISENTANGLED  
         # Build Backbone.
         self.backbone = build_backbone(cfg)
         self.size_divisibility = self.backbone.size_divisibility
+        
+        # Selection Config - Currently run offline
+        self.selection = cfg.DISCOVER_UNKNOWN
 
         # build diffusion
         timesteps = 1000
@@ -133,6 +137,7 @@ class RandBox(nn.Module):
         nc_weight = cfg.MODEL.NC_WEIGHT
         no_object_weight = cfg.MODEL.NO_OBJECT_WEIGHT
         decorr_weight = cfg.MODEL.DECORR_WEIGHT
+        crowd_weight = cfg.MODEL.CROWD_WEIGHT
         self.deep_supervision = cfg.MODEL.DEEP_SUPERVISION
         self.use_nms = cfg.MODEL.USE_NMS
 
@@ -141,7 +146,7 @@ class RandBox(nn.Module):
             cfg=cfg, cost_class=class_weight, cost_bbox=l1_weight, cost_giou=giou_weight
         )
         weight_dict = {"loss_ce": class_weight, "loss_bbox": l1_weight, "loss_giou": giou_weight,
-                       "loss_nc_ce": nc_weight, "loss_decorr": decorr_weight}
+                       "loss_nc_ce": nc_weight, "loss_decorr": decorr_weight, "loss_crowd": crowd_weight}
         if self.deep_supervision:
             aux_weight_dict = {}
             for i in range(self.num_heads - 1):
@@ -151,6 +156,8 @@ class RandBox(nn.Module):
         losses = ["labels", "boxes"]
         if cfg.MODEL.NC:
             losses += ["nc_labels"]
+        if cfg.MODEL.CROWD:
+            losses += ["crowd"]
         if decorr_weight > 0:
             losses += ["decorr"]
 
@@ -179,7 +186,7 @@ class RandBox(nn.Module):
 
         x_boxes = box_cxcywh_to_xyxy(x_boxes)
         x_boxes = x_boxes * images_whwh[:, None, :]
-        outputs_class, outputs_objectness, outputs_coord = self.head(backbone_feats, x_boxes, t, None)
+        outputs_class, outputs_objectness, outputs_coord,_ = self.head(backbone_feats, x_boxes, t, None)
 
         x_start = outputs_coord[-1]  # (batch, num_proposals, 4) predict boxes: absolute coordinates (x1, y1, x2, y2)
         x_start = x_start / images_whwh[:, None, :]
@@ -252,6 +259,88 @@ class RandBox(nn.Module):
 
         return sqrt_alphas_cumprod_t * x_start + sqrt_one_minus_alphas_cumprod_t * noise
 
+    @torch.no_grad()
+    def mine_unknown_rois(self, batched_inputs, backbone_feats, images_whwh, images):
+        gt_instances = [x["instances"].to(self.device) for x in batched_inputs]
+        targets, x_boxes, noises, t = self.prepare_targets(gt_instances)
+        t = t.squeeze(-1)
+        x_boxes = x_boxes * images_whwh[:, None, :]
+        
+        outputs_class, output_objectness, outputs_coord, proposal_features = self.head(backbone_feats, 
+                                                                                       x_boxes, 
+                                                                                       t, 
+                                                                                       None, 
+                                                                                       roi_labels=None)
+        raw_rois = {
+            'pred_logits': outputs_class[-1], 
+            'pred_objectness': output_objectness[-1], 
+            'pred_boxes': outputs_coord[-1],
+            'pred_proposal_features': proposal_features[-1]
+        }
+        
+        # Map each RoI to its corresponding class label using the Dynamic Matcher
+        # Note: We only look for the knowns here, remaining RoIs are marked as unknown
+        gt_indices, _, _, _ = self.criterion.matcher(raw_rois, targets)   
+        
+        raw_rois_list = []
+        gt_indices_list = []        
+        raw_scores_list = []
+        raw_bbox_list = []
+        for batch_idx in range(len(targets)):
+            gt_indices_list.append(gt_indices[batch_idx][0].float()) 
+            raw_rois_list.append(raw_rois["pred_proposal_features"][batch_idx])
+            raw_scores_list.append(raw_rois["pred_objectness"][batch_idx])
+            raw_bbox_list.append(raw_rois["pred_boxes"][batch_idx])
+        
+        # flatten the feature vector across images in the batch
+        raw_rois = torch.cat(raw_rois_list, dim = 0)
+        known_mask = torch.cat(gt_indices_list, dim = 0)
+        raw_objectness = torch.cat(raw_scores_list, dim = 0)
+        raw_bboxes = torch.cat(raw_bbox_list, dim = 0)
+        
+        # Remove low score RoIs - Not important and mostly would contain BG objects
+        low_score_mask = (raw_objectness.squeeze(1) > 0.2)
+        low_score_filtered_idx = torch.nonzero(low_score_mask, as_tuple=False).squeeze(1)
+        
+        # Apply the low score filter
+        raw_rois = raw_rois[low_score_filtered_idx]
+        known_mask = known_mask[low_score_filtered_idx]
+        raw_objectness = raw_objectness[low_score_filtered_idx]
+        raw_bboxes = raw_bboxes[low_score_filtered_idx]
+               
+        unk_idx, outputs_coord, output_objectness = filter_submod_selection(
+                                                                    known_mask, 
+                                                                    raw_bboxes, 
+                                                                    raw_rois, 
+                                                                    outputs_class, 
+                                                                    raw_objectness,
+                                                                    10
+                                                                )
+        
+        # Remove RoIs with objectness < 0.4 - We need only important RoIs
+        final_filter_mask = output_objectness.squeeze(-1) >= 0.4
+        filtered_idx = torch.nonzero(final_filter_mask, as_tuple=False).squeeze(1)
+
+        # If no RoIs pass the filter, return empty tensors
+        if filtered_idx.numel() == 0:
+            return {
+                'bboxes': torch.empty((0, 4), device=self.device),
+                'labels': torch.empty((0,), device=self.device, dtype=torch.long),
+                'scores': torch.empty((0,), device=self.device)
+            }
+
+        # Apply the final filter
+        outputs_coord = outputs_coord[filtered_idx]
+        output_objectness = output_objectness[filtered_idx]
+        unk_idx = unk_idx[filtered_idx]
+        
+        return {
+            'bboxes': outputs_coord,
+            'labels': torch.ones_like(unk_idx) * 80, 
+            'scores': output_objectness.squeeze(-1)
+        }
+        
+    
     def forward(self, batched_inputs, do_postprocess=True):
         """
         Args:
@@ -279,8 +368,12 @@ class RandBox(nn.Module):
             features.append(feature)
 
         # Prepare Proposals.
-        if not self.training:
+        if not self.training and not self.selection:
             results = self.ddim_sample(batched_inputs, features, images_whwh, images, do_postprocess=do_postprocess)
+            return results
+        
+        if not self.training and self.selection:
+            results = self.mine_unknown_rois(batched_inputs, features, images_whwh, images)
             return results
 
         if self.training:
@@ -289,12 +382,22 @@ class RandBox(nn.Module):
             t = t.squeeze(-1)
             x_boxes = x_boxes * images_whwh[:, None, :]
 
-            outputs_class, output_objectness, outputs_coord = self.head(features, x_boxes, t, None)
-            output = {'pred_logits': outputs_class[-1], 'pred_objectness': output_objectness[-1], 'pred_boxes': outputs_coord[-1]}
-
+            pre_filter_outputs_class, pre_filter_output_objectness, pre_filter_outputs_coord, pre_filter_proposal_features = self.head(
+                                                                                     features, x_boxes, t, None, roi_labels=None)
+                      
+            output = {
+                'pred_logits': pre_filter_outputs_class[-1], 
+                'pred_objectness': pre_filter_output_objectness[-1], 
+                'pred_boxes': pre_filter_outputs_coord[-1],
+                'pred_proposal_features': pre_filter_proposal_features[-1]
+            }
             if self.deep_supervision:
-                output['aux_outputs'] = [{'pred_logits': a, 'pred_objectness': b, 'pred_boxes': c}
-                                         for a, b, c in zip(outputs_class[:-1], output_objectness[:-1], outputs_coord[:-1])]
+                output['aux_outputs'] = [{'pred_logits': a, 'pred_objectness': b, 'pred_boxes': c, 'pred_proposal_features': d}
+                                         for a, b, c, d in zip(pre_filter_outputs_class[:-1], 
+                                                               pre_filter_output_objectness[:-1], 
+                                                               pre_filter_outputs_coord[:-1], 
+                                                               pre_filter_proposal_features[:-1])]
+            
             loss_dict = self.criterion(output, targets)
             weight_dict = self.criterion.weight_dict
             for k in loss_dict.keys():

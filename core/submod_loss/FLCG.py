@@ -1,0 +1,52 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import torch
+import torch.nn as nn
+from .loss_utils import similarity_kernel, soft_max
+
+class FacilityLocationConditionalGainLoss(nn.Module):
+    def __init__(self, metric='cosine', 
+                       lamda = 0.5, 
+                       eta   = 1.0,
+                       device = torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+        super(FacilityLocationConditionalGainLoss, self).__init__()
+        # determine the metric
+        self.sim_metric = metric
+        # determine the constant
+        self.lamda = lamda # This is the diversity constant
+        self.eta   = eta   # Privacy Harness constant
+        
+        self.device = device
+
+    def forward(self, ground_features, known_mask, unknown_mask):
+        # Mine indices of the known and unknown objects
+        known_idx = torch.nonzero(known_mask, as_tuple=False).squeeze(1)
+        unknown_idx = torch.nonzero(unknown_mask, as_tuple=False).squeeze(1)
+        
+        # Compute cosine similarity matrices
+        sim_VA = similarity_kernel(ground_features, 
+                                   ground_features[known_idx],
+                                   self.sim_metric)                   # (n, m) similarities between V and A
+        sim_VP = similarity_kernel(ground_features, 
+                                   ground_features[unknown_idx],
+                                   self.sim_metric)                   # (n, p) similarities between V and P
+        
+        # Compute max similarities
+        max_VA = torch.max(sim_VA, dim=1).values # torch.max(sim_VA, dim=1).values # soft_max(sim_VA, dim=1)  # (n,)
+        if ground_features[unknown_idx].numel() > 0:
+            max_VP = torch.max(sim_VP, dim=1).values # torch.max(sim_VP, dim=1).values # soft_max(sim_VP, dim=1) # (n,)
+        else:
+            max_VP = torch.zeros_like(max_VA)  # (n,)
+
+        # Compute facility location function
+        cg_val = max_VA - self.eta * max_VP
+        
+        gain = torch.clamp(cg_val, min=0)  # Apply max(·, 0)
+        # print(gain)
+        # print(gain.shape)        
+        loss = torch.mean(gain)  # Mean over all elements in V (set it to be -ve so that its maximized)
+        # print(loss)
+        # exit()
+        return -loss 
