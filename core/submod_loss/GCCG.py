@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import torch
 import torch.nn as nn
-from .loss_utils import similarity_kernel
+from loss_utils import similarity_kernel
 
 class GraphCutConditionalGainLoss(nn.Module):
     def __init__(self, metric='cosine', 
@@ -51,6 +51,8 @@ class GraphCutConditionalGainLoss(nn.Module):
         penalty = 2 * self.lamda * self.eta * torch.sum(sim_AP) 
 
         # Compute Graph-Cut Conditional Gain (-ve since loss needs to be maximized)
-        loss = penalty - f_lambda_A 
+        gain = f_lambda_A - penalty
         
-        return loss/ground_features.shape[0]  # Minimize the negative of the gain
+        loss = -gain/ground_features.shape[0]  # Minimize the negative of the gain
+        
+        return loss

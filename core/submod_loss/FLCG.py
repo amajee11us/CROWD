@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import torch
 import torch.nn as nn
-from .loss_utils import similarity_kernel, soft_max
+from loss_utils import similarity_kernel, soft_max
 
 class FacilityLocationConditionalGainLoss(nn.Module):
     def __init__(self, metric='cosine', 
@@ -44,9 +44,7 @@ class FacilityLocationConditionalGainLoss(nn.Module):
         cg_val = max_VA - self.eta * max_VP
         
         gain = torch.clamp(cg_val, min=0)  # Apply max(·, 0)
-        # print(gain)
-        # print(gain.shape)        
-        loss = torch.mean(gain)  # Mean over all elements in V (set it to be -ve so that its maximized)
-        # print(loss)
-        # exit()
-        return -loss 
+                
+        loss = - torch.sum(gain)/ ground_features.shape[0]  # Mean over all elements in V (set it to be -ve so that its maximized)
+        
+        return loss 
