@@ -101,8 +101,8 @@ def filter_submod_selection(labels_img, boxes_img, feats_img, cls_img, obj_img, 
     # Get indices for known and unknown proposals.
     known_mask = (labels_img != 0)
     unknown_mask = (labels_img == 0)
-    known_idx = torch.nonzero(known_mask, as_tuple=False).squeeze(1).cpu()
-    unknown_idx = torch.nonzero(unknown_mask, as_tuple=False).squeeze(1).cpu()
+    known_idx = torch.nonzero(known_mask, as_tuple=False).squeeze(1)
+    unknown_idx = torch.nonzero(unknown_mask, as_tuple=False).squeeze(1)
 
     similarity_metric = 'cosine'  # or 'euclidean'
     similarity_fn = get_similarity_fn(metric=similarity_metric)
@@ -135,6 +135,10 @@ def filter_submod_selection(labels_img, boxes_img, feats_img, cls_img, obj_img, 
 
         uk_selected = obj_cg_unknown.maximize(uk_budget)
         unknown_box_idx = torch.tensor([s[0] for s in uk_selected])
+    else:
+        print(known_idx.shape, unknown_idx.shape)
+        # If there are no unknown proposals, return an empty tensor
+        unknown_box_idx = torch.empty((0,), dtype=torch.long) 
     
     return unknown_box_idx, boxes_img[unknown_box_idx], obj_img[unknown_box_idx]
     
