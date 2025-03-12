@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import torch
 import torch.nn as nn
-from loss_utils import similarity_kernel
+from .loss_utils import similarity_kernel
 
 class GraphCutConditionalGainLoss(nn.Module):
     def __init__(self, metric='cosine', 

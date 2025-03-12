@@ -229,11 +229,6 @@ class SetCriterionDynamicK(nn.Module):
         for batch_idx in range(batch_size):
             known_mask = indices[batch_idx][0].float()
             unknown_mask = unknown_indices[batch_idx][0].float()
-
-            # This was there in OrtogonalDet so I am keeping it !!
-            # gt_multi_idx = indices[batch_idx][1]
-            # if len(gt_multi_idx) == 0:
-            #     continue
             
             # Stack the masks for passing to loss function
             known_classes_list.append(known_mask)
@@ -245,8 +240,19 @@ class SetCriterionDynamicK(nn.Module):
         known_mask = torch.cat(known_classes_list, dim = 0)
         unknown_mask = torch.cat(unknown_classes_list, dim = 0)
         
+        # Compute the overlap mask: 1 where both known and unknown are 1
+        overlap_mask = (known_mask * unknown_mask).clamp(max=1.0)
+        # remove overlap only from the unknown - otherwise this will confuse the loss
+        unknown_mask = unknown_mask - overlap_mask
+        
+        # Compute mask where at least one of known or unknown is 1
+        union_mask = (known_mask + unknown_mask).clamp(max=1.0)  # Ensure values don't exceed 1
+        union_idx = torch.nonzero(union_mask, as_tuple=False).squeeze(1)
+        
         # Now compute the loss
-        loss_crowd = self.crowd_criterion(ground_features, known_mask, unknown_mask)
+        loss_crowd = self.crowd_criterion(ground_features[union_idx], 
+                                          known_mask[union_idx], 
+                                          unknown_mask[union_idx])
         
         return {'loss_crowd': loss_crowd}
 
