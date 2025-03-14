@@ -18,6 +18,9 @@ class FacilityLocationConditionalGainLoss(nn.Module):
         self.device = device
 
     def forward(self, ground_features, known_mask, unknown_mask):
+        # Update device
+        self.device = ground_features.device
+        
         # Mine indices of the known and unknown objects
         known_idx = torch.nonzero(known_mask, as_tuple=False).squeeze(1)
         unknown_idx = torch.nonzero(unknown_mask, as_tuple=False).squeeze(1)
