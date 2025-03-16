@@ -10,6 +10,7 @@ import numpy as np
 
 from .submod_loss.GCCG import GraphCutConditionalGainLoss
 from .submod_loss.FLCG import FacilityLocationConditionalGainLoss
+from .submod_loss.FL import FacilityLocation
 
 class SetCriterionDynamicK(nn.Module):
     """ This class computes the training loss.
@@ -43,6 +44,7 @@ class SetCriterionDynamicK(nn.Module):
 
         # Initialize the Submod losses 
         self.crowd_loss_function = cfg.MODEL.CROWD_FUNCTION
+        self.balance = cfg.MODEL.CROWD_BALANCE_WEIGHT
         if "GCCG" in self.crowd_loss_function:
             self.crowd_criterion = GraphCutConditionalGainLoss(
                 metric='cosine', 
@@ -50,6 +52,11 @@ class SetCriterionDynamicK(nn.Module):
                 eta   = cfg.MODEL.CROWD_PRIVATE_HARDNESS,
             )
         elif "FLCG" in self.crowd_loss_function:
+            self.intra_criterion = FacilityLocation(
+                metric = 'cosine',
+                lamda  = 0.5,
+                temperature = 0.2
+            )
             self.crowd_criterion = FacilityLocationConditionalGainLoss(
                 metric='cosine', 
                 lamda = cfg.MODEL.CROWD_DIVERSITY, 
@@ -224,31 +231,56 @@ class SetCriterionDynamicK(nn.Module):
 
         batch_size = len(targets)
         # Ensure that no other image's features interfere during distributed runs
-        assert len(targets) == len(unknown_targets)        
+        assert len(targets) == len(unknown_targets)   
+        
+        target_classes = torch.full(outputs['pred_logits'].shape[:2], self.num_classes,
+                                    dtype=torch.int64, device=outputs['pred_logits'].device)     
 
         for batch_idx in range(batch_size):
             known_mask = indices[batch_idx][0].float()
             unknown_mask = unknown_indices[batch_idx][0].float()
-
-            # This was there in OrtogonalDet so I am keeping it !!
-            # gt_multi_idx = indices[batch_idx][1]
-            # if len(gt_multi_idx) == 0:
-            #     continue
             
             # Stack the masks for passing to loss function
             known_classes_list.append(known_mask)
             unknown_classes_list.append(unknown_mask)  
-            src_features_list.append(outputs["pred_proposal_features"][batch_idx])          
-
+            src_features_list.append(outputs["pred_proposal_features"][batch_idx]) 
+            
+            # prepare GT label vector
+            true_valid_query = indices[batch_idx][0]
+            true_gt_multi_idx = indices[batch_idx][1]
+            if len(true_gt_multi_idx) == 0:
+                continue
+            true_target_classes_o = targets[batch_idx]["labels"]
+            target_classes[batch_idx, true_valid_query] = true_target_classes_o[true_gt_multi_idx]
+        
         # flatten the feature vector across images in the batch
         ground_features = torch.cat(src_features_list, dim = 0)
         known_mask = torch.cat(known_classes_list, dim = 0)
         unknown_mask = torch.cat(unknown_classes_list, dim = 0)
         
-        # Now compute the loss
-        loss_crowd = self.crowd_criterion(ground_features, known_mask, unknown_mask)
+        # Compute the overlap mask: 1 where both known and unknown are 1
+        overlap_mask = (known_mask * unknown_mask).clamp(max=1.0)
+        # remove overlap only from the unknown - otherwise this will confuse the loss
+        unknown_mask = unknown_mask - overlap_mask
         
-        return {'loss_crowd': loss_crowd}
+        # Compute mask where at least one of known or unknown is 1
+        union_mask = (known_mask + unknown_mask).clamp(max=1.0)  # Ensure values don't exceed 1
+        union_idx = torch.nonzero(union_mask, as_tuple=False).squeeze(1)
+        
+        # Compute the final target_class tensor
+        target_classes = target_classes.view(-1)
+        
+        # Now compute the loss
+        loss_crowd = self.crowd_criterion(ground_features[union_idx], 
+                                          known_mask[union_idx], 
+                                          unknown_mask[union_idx])
+        
+        known_idx = torch.nonzero(known_mask, as_tuple=False).squeeze(1)        
+        
+        loss_crowd_intra = self.intra_criterion(ground_features[known_idx],
+                                                target_classes[known_idx])
+        
+        return {'loss_crowd': loss_crowd + (self.balance * loss_crowd_intra)}
 
     def _get_src_permutation_idx(self, indices):
         # permute predictions following indices
