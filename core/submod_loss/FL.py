@@ -22,44 +22,40 @@ class FacilityLocation(nn.Module):
         self.base_temperature = 0.07
 
     def forward(self, features, labels=None):
-        if len(features.shape) < 3:
-            raise ValueError('`features` needs to be [bsz, n_views, ...],'
-                             'at least 3 dimensions are required')
-        if len(features.shape) > 3:
-            features = features.view(features.shape[0], features.shape[1], -1)
-
-        batch_size = features.shape[0]
+        assert features.shape[0] == labels.shape[0]
         
-        # Compute the label mask
-        labels = labels.contiguous().view(-1, 1)
-        if labels.shape[0] != batch_size:
-            raise ValueError('Num of labels does not match num of features')
-        mask = torch.eq(labels, labels.T).float().to(self.device)
+        self.device = features.device
         
-        contrast_count = features.shape[1]
-        contrast_feature = torch.cat(torch.unbind(features, dim=1), dim=0)
-        anchor_feature = contrast_feature
-        anchor_count = contrast_count
+        if len(labels.shape) == 1:
+            labels = labels.reshape(-1, 1)
 
-        # tile mask
-        mask = mask.repeat(anchor_count, contrast_count)
-        mask_neg = 1.0 - mask
-        mask.fill_diagonal_(0)
+        # mask of shape [None, None], mask_{i, j}=1 if sample i and sample j have the same label
+        mask_pos = torch.eq(labels, labels.T).float().to(self.device)
+        mask_neg = 1.0 - mask_pos
+        
+        similarity = torch.div(
+            similarity_kernel(features, features, self.sim_metric), 
+            self.temperature
+        )
+        # for numerical stability
+        # sim_row_max, _ = torch.max(similarity, dim=1, keepdim=True)
+        # similarity = similarity - sim_row_max.detach()
+
+        # mask out self-contrastive
+        logits_mask = torch.ones_like(similarity)
+        logits_mask.fill_diagonal_(0)
+        mask_pos.fill_diagonal_(0)
         mask_neg.fill_diagonal_(0)
-
-        # Compute the Similarity Kernel
-        sim_kernel = similarity_kernel(anchor_feature, 
-                                       metric=self.sim_metric)
-
-        # Cross- Similarity between A_k and V\A_k
-        sim_kernel = mask_neg * sim_kernel
-
-        # Compute Facility Location
-        loss = self.lamda * soft_max(sim_kernel, axis=0)
-
-        # Scale the loss function
-        loss = (self.temperature / self.base_temperature) * loss
         
-        loss = loss.view(anchor_count, batch_size).mean()
-
+        # compute log_prob
+        exp_logits = torch.exp(similarity) * logits_mask
+        
+        # Min the similarity between negative set
+        log_prob = torch.log(
+            (exp_logits * mask_neg).sum(1)
+        )
+        
+        loss = (self.temperature / self.base_temperature) * log_prob
+        loss = loss.mean()
+        
         return loss

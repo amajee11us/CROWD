@@ -44,6 +44,7 @@ class SetCriterionDynamicK(nn.Module):
 
         # Initialize the Submod losses 
         self.crowd_loss_function = cfg.MODEL.CROWD_FUNCTION
+        self.balance = cfg.MODEL.CROWD_BALANCE_WEIGHT
         if "GCCG" in self.crowd_loss_function:
             self.crowd_criterion = GraphCutConditionalGainLoss(
                 metric='cosine', 
@@ -54,7 +55,7 @@ class SetCriterionDynamicK(nn.Module):
             self.intra_criterion = FacilityLocation(
                 metric = 'cosine',
                 lamda  = 0.5,
-                temperature = 0.7
+                temperature = 0.2
             )
             self.crowd_criterion = FacilityLocationConditionalGainLoss(
                 metric='cosine', 
@@ -247,14 +248,10 @@ class SetCriterionDynamicK(nn.Module):
             # prepare GT label vector
             true_valid_query = indices[batch_idx][0]
             true_gt_multi_idx = indices[batch_idx][1]
-            unk_valid_query = unknown_indices[batch_idx][0]
-            unk_gt_multi_idx = unknown_indices[batch_idx][1]
-            if len(true_gt_multi_idx) == 0 or len(unk_gt_multi_idx) == 0:
+            if len(true_gt_multi_idx) == 0:
                 continue
             true_target_classes_o = targets[batch_idx]["labels"]
-            unk_target_classes_o = unknown_targets[batch_idx]["labels"]
-            target_classes[batch_idx, true_valid_query] = true_target_classes_o[true_gt_multi_idx]         
-            target_classes[batch_idx, unk_valid_query]  = unk_target_classes_o[unk_gt_multi_idx]         
+            target_classes[batch_idx, true_valid_query] = true_target_classes_o[true_gt_multi_idx]
         
         # flatten the feature vector across images in the batch
         ground_features = torch.cat(src_features_list, dim = 0)
@@ -278,10 +275,12 @@ class SetCriterionDynamicK(nn.Module):
                                           known_mask[union_idx], 
                                           unknown_mask[union_idx])
         
-        loss_crowd_intra = self.intra_criterion(ground_features[union_idx],
-                                                target_classes[union_idx])
+        known_idx = torch.nonzero(known_mask, as_tuple=False).squeeze(1)        
         
-        return {'loss_crowd': loss_crowd + loss_crowd_intra}
+        loss_crowd_intra = self.intra_criterion(ground_features[known_idx],
+                                                target_classes[known_idx])
+        
+        return {'loss_crowd': loss_crowd + (self.balance * loss_crowd_intra)}
 
     def _get_src_permutation_idx(self, indices):
         # permute predictions following indices
