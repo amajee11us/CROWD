@@ -134,11 +134,11 @@ def filter_submod_selection(labels_img, boxes_img, feats_img, cls_img, obj_img, 
         uk_budget = num_proposals #int(num_proposals - known_feats.shape[0])
 
         uk_selected = obj_cg_unknown.maximize(uk_budget)
-        unknown_box_idx = torch.tensor([s[0] for s in uk_selected])
+        unknown_box_idx = torch.tensor([s[0] for s in uk_selected]).to(feats_img.device)
     else:
         print(known_idx.shape, unknown_idx.shape)
         # If there are no unknown proposals, return an empty tensor
-        unknown_box_idx = torch.empty((0,), dtype=torch.long) 
+        unknown_box_idx = torch.empty((0,), dtype=torch.long).to(feats_img.device) 
     
     return unknown_box_idx, boxes_img[unknown_box_idx], obj_img[unknown_box_idx]
     
