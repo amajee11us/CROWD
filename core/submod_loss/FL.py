@@ -22,9 +22,13 @@ class FacilityLocation(nn.Module):
         self.base_temperature = 0.07
 
     def forward(self, features, labels=None):
-        assert features.shape[0] == labels.shape[0]
-        
         self.device = features.device
+        
+        # Handle empty ground set case
+        if features.shape[0] == 0:
+            return torch.tensor(1e-8, device=self.device)
+        
+        assert features.shape[0] == labels.shape[0]
         
         if len(labels.shape) == 1:
             labels = labels.reshape(-1, 1)
@@ -47,15 +51,22 @@ class FacilityLocation(nn.Module):
         mask_pos.fill_diagonal_(0)
         mask_neg.fill_diagonal_(0)
         
-        # compute log_prob
+        # # compute log_prob
         exp_logits = torch.exp(similarity) * logits_mask
         
-        # Min the similarity between negative set
-        log_prob = torch.log(
-            (exp_logits * mask_neg).sum(1)
-        )
+        # # Min the similarity between negative set
+        # log_prob = torch.log(
+        #     (exp_logits * mask_neg).sum(1)
+        # )
         
-        loss = (self.temperature / self.base_temperature) * log_prob
-        loss = loss.mean()
+        # Compute the maximum similarity for each element in V over the selected set A.
+        # This corresponds to: for each i in V\A, max_{j in A} s_{ij}
+        max_sim, _ = torch.max(exp_logits * mask_neg, dim=1)  # shape: (n,)
+        
+        # Facility location function value: sum over all elements in V.
+        f_A = torch.sum(max_sim)
+        
+        loss = (self.temperature / self.base_temperature) * f_A
+        loss = f_A / features.shape[0]
         
         return loss

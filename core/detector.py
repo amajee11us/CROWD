@@ -156,7 +156,7 @@ class RandBox(nn.Module):
         losses = ["labels", "boxes"]
         if cfg.MODEL.NC:
             losses += ["nc_labels"]
-        if cfg.MODEL.CROWD:
+        if cfg.MODEL.CROWD and crowd_weight > 0:
             losses += ["crowd"]
         if decorr_weight > 0:
             losses += ["decorr"]
