@@ -261,7 +261,7 @@ class SetCriterionDynamicK(nn.Module):
         # Compute the overlap mask: 1 where both known and unknown are 1
         overlap_mask = (known_mask * unknown_mask).clamp(max=1.0)
         # remove overlap only from the unknown - otherwise this will confuse the loss
-        unknown_mask = unknown_mask - overlap_mask
+        unknown_mask = torch.clamp(unknown_mask - overlap_mask, min=0.0, max=1.0)
         
         # Compute mask where at least one of known or unknown is 1
         union_mask = (known_mask + unknown_mask).clamp(max=1.0)  # Ensure values don't exceed 1
