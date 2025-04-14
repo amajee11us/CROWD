@@ -1,6 +1,6 @@
 _BASE_: "base.yaml"
 MODEL:
-  WEIGHTS: "output/M-OWODB/t2/model_final.pth"
+  WEIGHTS: "detectron2://ImageNetPretrained/torchvision/R-50.pkl"
   RESNETS:
     DEPTH: 50
     STRIDE_IN_1X1: False
@@ -10,21 +10,21 @@ MODEL:
   CROWD: True
   CROWD_FUNCTION: "FLCG"
   CROWD_WEIGHT: 0.0
-  CROWD_PRIVATE_HARDNESS: 0.8
+  CROWD_PRIVATE_HARDNESS: 1.0
 DATASETS:
   TRAIN: ("my_train",)
   TEST:  ("my_val",)
 SOLVER:
-  STEPS: (20000, 25000, 27000)
-  MAX_ITER: 30000
+  STEPS: (35000, 38000)
+  MAX_ITER: 40000  # increased to keep similar training epochs
   WARMUP_ITERS: 0
 TEST:
-  EVAL_PERIOD: 30000
-  PREV_INTRODUCED_CLS: 20
-  CUR_INTRODUCED_CLS: 20
-  PREV_CLASSES: (20,)
+  EVAL_PERIOD: 40000
+  PREV_INTRODUCED_CLS: 0
+  CUR_INTRODUCED_CLS: 19
+  SCORE_THRESH: 0.
 INPUT:
   CROP:
     ENABLED: True
   FORMAT: "RGB"
-OUTPUT_DIR: "output/baseline_FLCG/M-OWODB/t2/"
+OUTPUT_DIR: "output/S-OWODB/t4/"
