@@ -10,7 +10,7 @@ from einops import rearrange
 from detectron2.modeling.poolers import ROIPooler
 from detectron2.structures import Boxes
 
-from .selector import filter_similarity, filter_submod_selection
+from .selector import filter_submod_selection
 
 _DEFAULT_SCALE_CLAMP = math.log(100000.0 / 16)
 

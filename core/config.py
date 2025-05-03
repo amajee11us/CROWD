@@ -71,4 +71,5 @@ def add_config(cfg):
 
     # Mine unknowns when true at the end of the training/eval round
     cfg.DISCOVER_UNKNOWN = False
+    cfg.DISCOVER_FUNCTION_NAME = "LDCG"
     cfg.DISCOVER_STORE_PATH = "" # this should be typically empty
