@@ -6,6 +6,7 @@ import time
 import json
 import tqdm
 import torch
+import multiprocessing as mp
 
 from detectron2.structures import Boxes, Instances, BoxMode
 from detectron2.config import get_cfg
@@ -70,13 +71,14 @@ def get_parser():
     parser.add_argument('-u', '--unknown', action='store_true', help='emphasize unknown color')
     return parser
 
-if __name__ == "__main__":
-    args = get_parser().parse_args()
-    logger = setup_logger()
-    logger.info("Arguments: " + str(args))
-
+def worker(gpu_id, image_ids, args):
+    # Set up config for this process and assign it a GPU device.
     cfg = setup_cfg(args)
+    cfg.defrost()
+    cfg.MODEL.DEVICE = f"cuda:{gpu_id}"
+    cfg.freeze()
     
+    # (Re)register the dataset in this process.
     super_task = args.task.split('/')[0]
     register_pascal_voc('my_selection_split', './datasets/', super_task, args.task, cfg)
     
@@ -84,26 +86,21 @@ if __name__ == "__main__":
     dataset_dicts = DatasetCatalog.get("my_selection_split")
     gt_mapping = {}
     for d in dataset_dicts:
-        # Extract the image id from the file name, e.g., "2008_000371" from "datasets/JPEGImages/2008_000371.jpg"
-        image_id = osp.splitext(osp.basename(d["file_name"]))[0]
-        gt_mapping[image_id] = d.get("annotations", [])
-
+        image_id_key = osp.splitext(osp.basename(d["file_name"]))[0]
+        gt_mapping[image_id_key] = d.get("annotations", [])
+    
     miner = VisualizationDemo(cfg)
+    results_local = {}
 
-    # Get the list of image ids from command-line or text file
-    if args.input_txt:
-        with open(args.input_txt, "r") as f:
-            image_ids = [line.strip() for line in f if line.strip()]
-    else:
-        image_ids = args.input
-
-    results = {}
-    for image_id in tqdm.tqdm(image_ids):
+    # Create a progress bar for this worker. The `position` parameter is set to gpu_id so that
+    # if the terminal supports it, each worker’s progress appears on a separate line.
+    pbar = tqdm.tqdm(total=len(image_ids), desc=f"GPU {gpu_id}", position=gpu_id, leave=True)
+    for image_id in image_ids:
         # Build the image path assuming images are stored under 'datasets/JPEGImages'
         path = osp.join('datasets/JPEGImages', image_id + '.jpg')
         img = read_image(path, format="BGR")
         height, width = img.shape[:2]
-
+    
         # Convert the saved ground truth annotations (if any) into an Instances object.
         gt_annos = gt_mapping.get(image_id, [])
         gt_instances = None
@@ -121,16 +118,57 @@ if __name__ == "__main__":
                 gt_instances = Instances((height, width))
                 gt_instances.gt_boxes = gt_boxes
                 gt_instances.gt_classes = torch.tensor(classes)
-
-        # Pass both image and ground truth to the predictor.        
+    
+        # Run inference for this image.
         predictions = miner.mine_unknown_per_image(img, gt_instances=gt_instances)
-        
-        if len(predictions["labels"]) > 0 :
-            results[image_id] = predictions 
+        if len(predictions["labels"]) > 0:
+            results_local[image_id] = predictions
 
-    # Convert results to JSON and print to console
+        # Update progress bar. tqdm automatically calculates ETA.
+        pbar.update(1)
+        pbar.set_postfix({
+            "Processed": pbar.n,
+            "Total": len(image_ids)
+        })
+    pbar.close()
+    return results_local
+
+if __name__ == "__main__":
+    # Set the multiprocessing start method to 'spawn' to support CUDA
+    mp.set_start_method('spawn', force=True)
+    
+    args = get_parser().parse_args()
+    logger = setup_logger()
+    logger.info("Arguments: " + str(args))
+    
+    # Determine the list of image ids.
+    if args.input_txt:
+        with open(args.input_txt, "r") as f:
+            image_ids = [line.strip() for line in f if line.strip()]
+    else:
+        image_ids = args.input
+
+    # Get number of available GPUs (or default to 1 if none available)
+    num_gpus = torch.cuda.device_count() if torch.cuda.device_count() > 0 else 1
+    logger.info(f"Found {num_gpus} GPU(s).")
+    
+    # Split the image ids into num_gpus roughly equal chunks.
+    chunks = [image_ids[i::num_gpus] for i in range(num_gpus)]
+    
+    # Use multiprocessing to run inference on each GPU in parallel.
+    pool_args = [(i, chunks[i], args) for i in range(num_gpus)]
+    with mp.Pool(processes=num_gpus) as pool:
+        results_list = pool.starmap(worker, pool_args)
+    
+    # Collate all results from the different processes.
+    results = {}
+    for res in results_list:
+        results.update(res)
+    
+    # Convert results to JSON and print/save.
     json_output = json.dumps(results, indent=4)
-    # If an output path is provided, save the JSON there
     if args.output:
         with open(args.output, "w") as f:
             f.write(json_output)
+    else:
+        print(json_output)

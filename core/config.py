@@ -56,6 +56,7 @@ def add_config(cfg):
     cfg.MODEL.CROWD_FUNCTION = "GCCG" # submodular function used as CROWD loss
     cfg.MODEL.CROWD_DIVERSITY = 0.5
     cfg.MODEL.CROWD_PRIVATE_HARDNESS = 1.0
+    cfg.MODEL.CROWD_BALANCE_WEIGHT = 0.0 
 
     # Optimizer.
     cfg.SOLVER.OPTIMIZER = "ADAMW"
@@ -70,4 +71,5 @@ def add_config(cfg):
 
     # Mine unknowns when true at the end of the training/eval round
     cfg.DISCOVER_UNKNOWN = False
+    cfg.DISCOVER_FUNCTION_NAME = "GCCG"
     cfg.DISCOVER_STORE_PATH = "" # this should be typically empty

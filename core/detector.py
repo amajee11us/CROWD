@@ -16,7 +16,7 @@ from .loss import SetCriterionDynamicK, HungarianMatcherDynamicK
 from .head import DynamicHead
 from .util.box_ops import box_cxcywh_to_xyxy, box_xyxy_to_cxcywh
 from .util.misc import nested_tensor_from_tensor_list
-from .selector import filter_similarity, filter_submod_selection
+from .selector import filter_submod_selection
 
 __all__ = ["RandBox"]
 
@@ -73,6 +73,7 @@ class RandBox(nn.Module):
         
         # Selection Config - Currently run offline
         self.selection = cfg.DISCOVER_UNKNOWN
+        self.selection_function_name = cfg.DISCOVER_FUNCTION_NAME
 
         # build diffusion
         timesteps = 1000
@@ -156,7 +157,7 @@ class RandBox(nn.Module):
         losses = ["labels", "boxes"]
         if cfg.MODEL.NC:
             losses += ["nc_labels"]
-        if cfg.MODEL.CROWD:
+        if cfg.MODEL.CROWD and crowd_weight > 0:
             losses += ["crowd"]
         if decorr_weight > 0:
             losses += ["decorr"]
@@ -309,6 +310,7 @@ class RandBox(nn.Module):
         raw_bboxes = raw_bboxes[low_score_filtered_idx]
                
         unk_idx, outputs_coord, output_objectness = filter_submod_selection(
+                                                                    self.selection_function_name,
                                                                     known_mask, 
                                                                     raw_bboxes, 
                                                                     raw_rois, 
