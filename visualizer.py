@@ -76,7 +76,7 @@ class VOCViewer:
 
 
         # Load image IDs
-        val_file = os.path.join("/Users/amiteshgangrade/Desktop/building_neural_net/selected_images.txt") #set your path for image ids
+        val_file = os.path.join("") #set your path for image ids
         with open(val_file, "r") as f:
             self.image_ids = [line.strip() for line in f.readlines()]
         print(self.image_ids)
@@ -123,8 +123,7 @@ class VOCViewer:
                 label = inst["label"]
                 if label=="unknown":
                     cv2.rectangle(image, (x, y), (x+w, y+h), (0, 165, 255), 2)
-                    # cv2.putText(image, label[0].capitalize()+label[1:], (x, y - 5), cv2.FONT_HERSHEY_TRIPLEX, 0.6, (0, 165, 255),1, cv2.LINE_AA)
-                    # Calculate text size
+                    
                     (text_width, text_height), baseline = cv2.getTextSize(label[0].capitalize() + label[1:], cv2.FONT_HERSHEY_TRIPLEX, 0.6, 1)
                     top_left = (x, y - text_height - 5)  # Top-left corner of the rectangle
                     bottom_right = (x + text_width, y)
@@ -138,7 +137,6 @@ class VOCViewer:
                     cv2.putText(image, label[0].capitalize() + label[1:], (x, y - 5), cv2.FONT_HERSHEY_TRIPLEX, 0.6, (0, 0, 0), 1, cv2.LINE_AA)
                 else:
                     cv2.rectangle(image, (x, y), (x+w, y+h), (0, 150, 0), 3)
-                    #cv2.putText(image, label[0].capitalize()+label[1:], (x, y - 5), cv2.FONT_HERSHEY_TRIPLEX, 0.6, (0, 150, 0),1, cv2.LINE_AA)
                     (text_width, text_height), baseline = cv2.getTextSize(label[0].capitalize() + label[1:], cv2.FONT_HERSHEY_TRIPLEX, 0.6, 1)
                     top_left = (x, y - text_height - 5)  # Top-left corner of the rectangle
                     bottom_right = (x + text_width, y)
@@ -150,8 +148,7 @@ class VOCViewer:
                     cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
 
                     cv2.putText(image, label[0].capitalize() + label[1:], (x, y - 5), cv2.FONT_HERSHEY_TRIPLEX, 0.6, (0, 0, 0), 1, cv2.LINE_AA)
-            #cv2.putText(image, f"Image ID: {image_id}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
-            output_path = os.path.join("/Users/amiteshgangrade/Desktop/image_with_bboxes", f"{image_id}_bbbox.jpg")
+            output_path = os.path.join("", f"{image_id}_bbbox.jpg") # set your path for output
             cv2.imwrite(output_path, image)
             print(f"Image with bounding boxes saved to {output_path}")
         # Convert image to displayable format
@@ -175,7 +172,7 @@ class VOCViewer:
 # --- Run it ---
 if __name__ == "__main__":
     print("Running the tinker viewer...")
-    voc_base = "/Users/amiteshgangrade/Desktop/building_neural_net/VOCdevkit/VOC2012"  # <- set your path for annotations
+    voc_base = ""  # <- set your path for annotations
     root = tk.Tk()
     root.title("Pascal VOC Viewer")
     app = VOCViewer(root, voc_base , grid_size=(2,2))
