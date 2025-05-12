@@ -11,6 +11,7 @@ import numpy as np
 from .submod_loss.GCCG import GraphCutConditionalGainLoss
 from .submod_loss.FLCG import FacilityLocationConditionalGainLoss
 from .submod_loss.FL import FacilityLocation
+from .submod_loss.GC import GraphCut
 
 class SetCriterionDynamicK(nn.Module):
     """ This class computes the training loss.
@@ -46,6 +47,12 @@ class SetCriterionDynamicK(nn.Module):
         self.crowd_loss_function = cfg.MODEL.CROWD_FUNCTION
         self.balance = cfg.MODEL.CROWD_BALANCE_WEIGHT
         if "GCCG" in self.crowd_loss_function:
+            self.intra_criterion = GraphCut(
+                metric = 'cosine',
+                lamda  = 0.5,
+                temperature = 0.2
+            )
+            
             self.crowd_criterion = GraphCutConditionalGainLoss(
                 metric='cosine', 
                 lamda = cfg.MODEL.CROWD_DIVERSITY, 
