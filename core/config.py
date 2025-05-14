@@ -69,6 +69,7 @@ def add_config(cfg):
     cfg.TEST.PREV_CLASSES = ()  # previously seen classes
     cfg.TEST.MASK = 1  # 0: no mask, 1: mask unseen classes, 2: mask prev and unseen classes
     cfg.TEST.SCORE_THRESH = 0.15  # follow RandBox
+    cfg.TEST.UNKNOWN_THRE_TEST = 0.4
 
     # Mine unknowns when true at the end of the training/eval round
     cfg.DISCOVER_UNKNOWN = False
