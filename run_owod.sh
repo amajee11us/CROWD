@@ -101,7 +101,6 @@ if [ $BENCHMARK == "M-OWODB" ]; then
                                 --config-file configs/${BENCHMARK}/t4_ft.yaml \
                                 --resume \
                                 MODEL.WEIGHTS output/${BASELINE}/${BENCHMARK}/t4/model_0014999.pth \
-                                DISCOVER_STORE_PATH output/${BASELINE}/${BENCHMARK}/t4/unknown_rois.json \
                                 OUTPUT_DIR output/${BASELINE}/${BENCHMARK}/t4/
 else
   # T1
@@ -197,6 +196,5 @@ else
                                 --config-file configs/${BENCHMARK}/t4_ft.yaml \
                                 --resume \
                                 MODEL.WEIGHTS output/${BASELINE}/${BENCHMARK}/t4/model_0014999.pth \
-                                DISCOVER_STORE_PATH output/${BASELINE}/${BENCHMARK}/t4/unknown_rois.json \
                                 OUTPUT_DIR output/${BASELINE}/${BENCHMARK}/t4/
 fi
