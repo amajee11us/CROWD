@@ -52,6 +52,7 @@ def add_config(cfg):
 
     # Combinatorial CROWD loss
     cfg.MODEL.CROWD = False
+    cfg.MODEL.CROWD_IOD = False # TODO: Make a unified parameter (later)
     cfg.MODEL.CROWD_WEIGHT = 0.0  # weight for CROWD loss (uses submod CG)
     cfg.MODEL.CROWD_FUNCTION = "GCCG" # submodular function used as CROWD loss
     cfg.MODEL.CROWD_DIVERSITY = 0.5
