@@ -34,6 +34,7 @@ class VisualizationDemo(object):
             self.predictor = DefaultPredictor(cfg)
 
         self.threshold = cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST  # workaround
+        self.unknown_threshold = cfg.TEST.UNKNOWN_THRE_TEST
         self.check_for_miner_call = cfg.DISCOVER_UNKNOWN
     
     def mine_unknown_per_image(self, image, gt_instances=None):
@@ -83,7 +84,7 @@ class VisualizationDemo(object):
         
         return mined_instances
     
-    def run_on_image(self, image, unknown=False):
+    def run_on_image(self, image, unknown=False , img_id=None):
         """
         Args:
             image (np.ndarray): an image of shape (H, W, C) (in BGR order).
@@ -98,6 +99,12 @@ class VisualizationDemo(object):
         # Filter
         instances = predictions['instances']
         new_instances = instances[instances.scores > self.threshold]
+        new_instance_scores = new_instances.scores
+        new_instances_classes = new_instances.pred_classes
+        mask_class_uk_thre = (new_instances_classes==80)&(new_instance_scores>self.unknown_threshold)
+        mask_other_classes = (new_instances_classes!=80)
+        final_mask = mask_class_uk_thre | mask_other_classes
+        new_instances = new_instances[final_mask]
         predictions = {'instances': new_instances}
         # Convert image from OpenCV BGR format to Matplotlib RGB format.
         image = image[:, :, ::-1]

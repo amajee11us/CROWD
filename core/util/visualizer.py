@@ -392,7 +392,10 @@ class Visualizer:
         boxes = predictions.pred_boxes if predictions.has("pred_boxes") else None
         scores = predictions.scores if predictions.has("scores") else None
         classes = predictions.pred_classes.tolist() if predictions.has("pred_classes") else None
-        labels = _create_text_labels(classes, scores, self.metadata.get("thing_classes", None))
+        # labels = _create_text_labels(classes, scores, self.metadata.get("thing_classes", None))
+        # only class names, no “: score” or percentages
+        thing_classes = self.metadata.get("thing_classes", None) or []
+        labels = [thing_classes[c] for c in classes] if classes is not None else None
         keypoints = predictions.pred_keypoints if predictions.has("pred_keypoints") else None
 
         if predictions.has("pred_masks"):
@@ -405,7 +408,7 @@ class Visualizer:
             colors = [
                 self._jitter([x / 255 for x in self.metadata.thing_colors[c]]) for c in classes
             ]
-            alpha = 0.8
+            alpha = 1.0
         elif unknown:
             colormap = [(112, 168, 224)] * 80 + [(238, 228, 104)]
             colors = [[x / 255 for x in colormap[c]] for c in classes]
@@ -414,7 +417,7 @@ class Visualizer:
             # colors = None
             colormap = _COLORS
             colors = [[x for x in _COLORS[c % len(colormap)]] for c in classes]
-            alpha = 0.5
+            alpha = 1.0
 
         if self._instance_mode == ColorMode.IMAGE_BW:
             self.output.reset_image(
@@ -424,7 +427,7 @@ class Visualizer:
                     else None
                 )
             )
-            alpha = 0.3
+            alpha = 1.0
 
         self.overlay_instances(
             masks=masks,
@@ -691,8 +694,14 @@ class Visualizer:
 
         for i in range(num_instances):
             color = assigned_colors[i]
+            # if boxes is not None:
+            #     self.draw_box(boxes[i], edge_color=color, alpha=alpha)
             if boxes is not None:
-                self.draw_box(boxes[i], edge_color=color, alpha=alpha)
+                # blue if this instance is 'unknown', else green
+                lbl = labels[i] if labels is not None else None
+                box_color = (0, 0, 1) if lbl == "unknown" else (0, 1, 0)
+                # full opacity
+                self.draw_box(boxes[i], edge_color=box_color, alpha=1.0)
 
             if masks is not None:
                 for segment in masks[i].polygons:
@@ -729,7 +738,7 @@ class Visualizer:
                         text_pos = (x0, y1)
 
                 height_ratio = (y1 - y0) / np.sqrt(self.output.height * self.output.width)
-                lighter_color = self._change_color_brightness(color, brightness_factor=0.7)
+                lighter_color = self._change_color_brightness(color, brightness_factor=1.0)
                 font_size = (
                     np.clip((height_ratio - 0.02) / 0.08 + 1, 1.2, 2)
                     * 0.5
@@ -916,7 +925,8 @@ class Visualizer:
         width = x1 - x0
         height = y1 - y0
 
-        linewidth = max(self._default_font_size / 4, 1)
+        # bump up default linewidth so even small image boxes are thick
+        linewidth = 4 #max(self._default_font_size, 2)
 
         self.output.ax.add_patch(
             mpl.patches.Rectangle(
@@ -926,7 +936,7 @@ class Visualizer:
                 fill=False,
                 edgecolor=edge_color,
                 linewidth=linewidth * self.output.scale,
-                alpha=alpha,
+                alpha=1.0,
                 linestyle=line_style,
             )
         )
