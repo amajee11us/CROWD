@@ -52,6 +52,7 @@ def add_config(cfg):
 
     # Combinatorial CROWD loss
     cfg.MODEL.CROWD = False
+    cfg.MODEL.CROWD_IOD = False # TODO: Make a unified parameter (later)
     cfg.MODEL.CROWD_WEIGHT = 0.0  # weight for CROWD loss (uses submod CG)
     cfg.MODEL.CROWD_FUNCTION = "GCCG" # submodular function used as CROWD loss
     cfg.MODEL.CROWD_DIVERSITY = 0.5
@@ -68,6 +69,7 @@ def add_config(cfg):
     cfg.TEST.PREV_CLASSES = ()  # previously seen classes
     cfg.TEST.MASK = 1  # 0: no mask, 1: mask unseen classes, 2: mask prev and unseen classes
     cfg.TEST.SCORE_THRESH = 0.15  # follow RandBox
+    cfg.TEST.UNKNOWN_THRE_TEST = 0.4
 
     # Mine unknowns when true at the end of the training/eval round
     cfg.DISCOVER_UNKNOWN = False

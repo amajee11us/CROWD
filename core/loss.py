@@ -72,6 +72,12 @@ class SetCriterionDynamicK(nn.Module):
         else:
             raise NotImplementedError("{} Loss Not Implemented.".format(self.crowd_loss_function))
 
+        # Check for IOD 
+        self.iod = cfg.MODEL.CROWD_IOD
+        self.all_known_class_list  = list(range(0, cfg.TEST.PREV_INTRODUCED_CLS+cfg.TEST.CUR_INTRODUCED_CLS))
+        self.prev_known_class_list = list(range(0, cfg.TEST.PREV_INTRODUCED_CLS))
+        self.curr_known_class_list = list(range(cfg.TEST.PREV_INTRODUCED_CLS, cfg.TEST.PREV_INTRODUCED_CLS+cfg.TEST.CUR_INTRODUCED_CLS))
+
     def loss_labels(self, outputs, targets, indices):
         """Classification loss (NLL)
         targets dicts must contain the key "labels" containing a tensor of dim [nb_target_boxes]
@@ -289,6 +295,70 @@ class SetCriterionDynamicK(nn.Module):
         
         return {'loss_crowd': loss_crowd + (self.balance * loss_crowd_intra)}
 
+    def loss_crowd_iod(self, outputs, targets, indices, unknown_targets, unknown_indices):
+        # 1) collect proposal features & build a flat GT‐label tensor
+        src_feats, known_masks = [], []
+        batch_size = len(targets)
+        # sentinel for “no GT”
+        target_classes = torch.full(
+            outputs['pred_logits'].shape[:2],
+            self.num_classes,
+            dtype=torch.int64,
+            device=outputs['pred_logits'].device
+        )
+
+        for b in range(batch_size):
+            mask_b = indices[b][0].float()
+            known_masks.append(mask_b)
+            src_feats.append(outputs['pred_proposal_features'][b])
+
+            valid_q, gt_idx = indices[b]
+            if len(gt_idx) > 0:
+                gt_labels = targets[b]['labels']
+                target_classes[b, valid_q] = gt_labels[gt_idx]
+
+        # 2) flatten
+        feats_flat  = torch.cat(src_feats,   dim=0)           # [M × D]
+        known_flat  = torch.cat(known_masks, dim=0).bool()   # [M]
+        labels_flat = target_classes.view(-1)                # [M]
+
+        # 3) build prev vs curr masks without torch.isin
+        device = feats_flat.device
+        prev_cls_list = self.prev_known_class_list
+        curr_cls_list = self.curr_known_class_list
+
+        # expand labels to [M, 1] for comparison
+        labels_exp = labels_flat.unsqueeze(1)                # [M, 1]
+
+        # make tensors of shape [1, P] and [1, C]
+        prev_tensor = torch.tensor(prev_cls_list, device=device, dtype=torch.int64).unsqueeze(0)  # [1, P]
+        curr_tensor = torch.tensor(curr_cls_list, device=device, dtype=torch.int64).unsqueeze(0)  # [1, C]
+
+        # compare and reduce along dim=1
+        is_prev = known_flat & (labels_exp == prev_tensor).any(dim=1)  # [M]
+        is_curr = known_flat & (labels_exp == curr_tensor).any(dim=1)  # [M]
+
+        # 4) union of prev ∪ curr for separability loss
+        union_mask = (is_prev.float() + is_curr.float()).clamp(max=1.0)
+        union_idx  = torch.nonzero(union_mask, as_tuple=False).squeeze(1)
+
+        # 5) separability between prev vs curr
+        loss_sep = self.crowd_criterion(
+            feats_flat[union_idx],
+            is_prev.float()[union_idx],
+            is_curr.float()[union_idx]
+        )
+
+        # 6) intra‐class compactness over ALL knowns
+        known_idx = torch.nonzero(known_flat, as_tuple=False).squeeze(1)
+        loss_intra = self.intra_criterion(
+            feats_flat[known_idx],
+            labels_flat[known_idx]
+        )
+
+        # 7) combine
+        return {'loss_crowd': loss_sep + self.balance * loss_intra}
+
     def _get_src_permutation_idx(self, indices):
         # permute predictions following indices
         batch_idx = torch.cat([torch.full_like(src, i) for i, (src, _) in enumerate(indices)])
@@ -307,7 +377,7 @@ class SetCriterionDynamicK(nn.Module):
             'boxes': self.loss_boxes,
             'nc_labels': self.loss_nc_labels,
             'decorr': self.loss_decorr,
-            'crowd': self.loss_crowd,
+            'crowd': self.loss_crowd_iod if self.iod else self.loss_crowd,
         }
         assert loss in loss_map, f'do you really want to compute {loss} loss?'
         if 'crowd' in loss:
