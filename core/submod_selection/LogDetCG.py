@@ -97,6 +97,12 @@ class LogDetConditionalGain(SubmodularSelection):
         if j not in self.selected:
             self.selected.append(j)
 
+    def reset(self):
+        """
+        Reset the selector to initial state for a fresh run.
+        """
+        self.selected = []
+    
     def evaluate(self) -> float:
         """
         f(A | P) = log det( I + λ K[A∪P, A∪P] ) - fP

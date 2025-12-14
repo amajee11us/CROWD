@@ -61,6 +61,13 @@ class FacilityLocationConditionalGain(SubmodularSelection):
         # Keep track of selected indices (from 0 to n-1 only)
         self.selected = []
     
+    def reset(self):
+        """
+        Reset the selector to initial state for a fresh run.
+        """
+        self.current = self.baseline.clone()
+        self.selected = []
+    
     def evaluate(self):
         """
         Returns the current function value:
