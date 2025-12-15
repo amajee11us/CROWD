@@ -28,4 +28,4 @@ INPUT:
   CROP:
     ENABLED: True
   FORMAT: "RGB"
-OUTPUT_DIR: "output/baseline_FLCG/M-OWODB/t2/"
+OUTPUT_DIR: "output/M-OWODB/t2/"

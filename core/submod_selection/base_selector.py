@@ -46,6 +46,12 @@ class SubmodularSelection:
         """
         raise NotImplementedError("Implement this function in a subclass")
     
+    def reset(self):
+        """
+        Reset the selector to initial state for a fresh run.
+        """
+        raise NotImplementedError("Implement this function in a subclass")
+    
     def maximize(self, k):
         """
         Perform naive greedy maximization for conditional gain function initialized earlier. 
@@ -56,7 +62,8 @@ class SubmodularSelection:
         Returns:
             list: Selected indices for set A
         """
-        selected_A = []
+        self.reset()
+        
         selected_A_with_gain = []
         N = self.n 
         
@@ -65,7 +72,8 @@ class SubmodularSelection:
             best_candidate = None
             
             for candidate in range(N):
-                if candidate in selected_A:
+                # Check against self.selected (the instance variable)
+                if candidate in self.selected:
                     continue
                 gain = self.marginal_gain(candidate)
                 if gain >= best_gain:
@@ -73,8 +81,10 @@ class SubmodularSelection:
                     best_candidate = candidate
             
             if best_candidate is not None:
-                selected_A.append(best_candidate)
                 selected_A_with_gain.append((best_candidate, best_gain))
                 self.update(best_candidate)
+            else:
+                # No more candidates with positive gain or all candidates exhausted
+                break
         
         return selected_A_with_gain
