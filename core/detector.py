@@ -333,13 +333,12 @@ class RandBox(nn.Module):
 
         # Apply the final filter
         outputs_coord = outputs_coord[filtered_idx]
-        output_objectness = output_objectness[filtered_idx]
         unk_idx = unk_idx[filtered_idx]
+        del output_objectness
         
         return {
             'bboxes': outputs_coord,
             'labels': torch.ones_like(unk_idx) * 80, 
-            'scores': output_objectness.squeeze(-1)
         }
         
     

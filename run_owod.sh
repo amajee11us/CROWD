@@ -5,7 +5,7 @@ BENCHMARK=${BENCHMARK:-"M-OWODB"}  # M-OWODB or S-OWODB
 PORT=${PORT:-"50211"}
 GPUS=${GPUS:-"0,1,2,3"}
 NUM_GPUS=${NUM_GPUS:-"4"}
-BASELINE=${BASELINE:-"crowd_d_GCCG_l_GC_GCCG"}
+BASELINE=${BASELINE:-"crowd"}
 
 if [ $BENCHMARK == "M-OWODB" ]; then
   # T1
@@ -39,7 +39,7 @@ if [ $BENCHMARK == "M-OWODB" ]; then
                                 --dist-url tcp://127.0.0.1:${PORT} \
                                 --task ${BENCHMARK}/t2 \
                                 --config-file configs/${BENCHMARK}/t2.yaml \
-                                MODEL.WEIGHTS output/${BASELINE}/${BENCHMARK}/t1/model_0019999.pth \
+                                MODEL.WEIGHTS output/${BASELINE}/${BENCHMARK}/t1/model_0029999.pth \
                                 OUTPUT_DIR output/${BASELINE}/${BENCHMARK}/t2/
   
   CUDA_VISIBLE_DEVICES=${GPUS} python discover_unknown.py \
@@ -134,7 +134,7 @@ else
                                 --dist-url tcp://127.0.0.1:${PORT} \
                                 --task ${BENCHMARK}/t2 \
                                 --config-file configs/${BENCHMARK}/t2.yaml \
-                                MODEL.WEIGHTS output/${BENCHMARK}/t1/model_0039999.pth \
+                                MODEL.WEIGHTS output/${BASELINE}/${BENCHMARK}/t1/model_0039999.pth \
                                 OUTPUT_DIR output/${BASELINE}/${BENCHMARK}/t2/
   
   CUDA_VISIBLE_DEVICES=${GPUS} python discover_unknown.py \
@@ -160,7 +160,7 @@ else
                                 --dist-url tcp://127.0.0.1:${PORT} \
                                 --task ${BENCHMARK}/t3 \
                                 --config-file configs/${BENCHMARK}/t3.yaml \
-                                MODEL.WEIGHTS output/${BENCHMARK}/t2/model_0029999.pth \
+                                MODEL.WEIGHTS output/${BASELINE}/${BENCHMARK}/t2/model_0029999.pth \
                                 OUTPUT_DIR output/${BASELINE}/${BENCHMARK}/t3/
   
   CUDA_VISIBLE_DEVICES=${GPUS} python discover_unknown.py \
@@ -186,7 +186,7 @@ else
                                 --dist-url tcp://127.0.0.1:${PORT} \
                                 --task ${BENCHMARK}/t4 \
                                 --config-file configs/${BENCHMARK}/t4.yaml \
-                                MODEL.WEIGHTS output/${BENCHMARK}/t3/model_0029999.pth \
+                                MODEL.WEIGHTS output/${BASELINE}/${BENCHMARK}/t3/model_0029999.pth \
                                 OUTPUT_DIR output/${BASELINE}/${BENCHMARK}/t4/
 
   CUDA_VISIBLE_DEVICES=${GPUS} python train_net.py \

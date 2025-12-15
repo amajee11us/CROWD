@@ -80,7 +80,6 @@ class VisualizationDemo(object):
         # return {'bboxes': raw_bboxes, 'labels': gt_indices, 'scores': raw_objectness }
         mined_instances["bboxes"] = mined_instances["bboxes"].to(self.cpu_device).tolist()
         mined_instances["labels"] = mined_instances["labels"].int().to(self.cpu_device).tolist()
-        mined_instances["scores"] = mined_instances["scores"].to(self.cpu_device).tolist()
         
         return mined_instances
     

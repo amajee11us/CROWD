@@ -48,24 +48,24 @@ class SetCriterionDynamicK(nn.Module):
         self.balance = cfg.MODEL.CROWD_BALANCE_WEIGHT
         if "GCCG" in self.crowd_loss_function:
             self.intra_criterion = GraphCut(
-                metric = 'cosine',
+                metric = 'rbf',
                 lamda  = 0.5,
                 temperature = 0.2
             )
             
             self.crowd_criterion = GraphCutConditionalGainLoss(
-                metric='cosine', 
+                metric='rbf', 
                 lamda = cfg.MODEL.CROWD_DIVERSITY, 
                 eta   = cfg.MODEL.CROWD_PRIVATE_HARDNESS,
             )
         elif "FLCG" in self.crowd_loss_function:
             self.intra_criterion = FacilityLocation(
-                metric = 'cosine',
+                metric = 'rbf',
                 lamda  = 0.5,
                 temperature = 0.2
             )
             self.crowd_criterion = FacilityLocationConditionalGainLoss(
-                metric='cosine', 
+                metric='rbf', 
                 lamda = cfg.MODEL.CROWD_DIVERSITY, 
                 eta   = cfg.MODEL.CROWD_PRIVATE_HARDNESS,
             )

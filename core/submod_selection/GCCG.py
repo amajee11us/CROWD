@@ -73,6 +73,13 @@ class GraphCutConditionalGain(SubmodularSelection):
         self.pairwise_sum += self.S[:, candidate_idx]
         self.selected.append(candidate_idx)
     
+    def reset(self):
+        """
+        Reset the selector to initial state for a fresh run.
+        """
+        self.pairwise_sum = torch.zeros(self.n, device=self.device)
+        self.selected = []
+    
     def evaluate(self):
         """
         Compute the current function value f(A|P) exactly.
